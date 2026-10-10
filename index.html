@@ -30,7 +30,7 @@ button.sec{background:#2c3550}button.on{background:#2f6fed}button.red{background
 </style></head><body>
 <div id="game">
  <div id="top"><span>📅 <b id="date"></b></span><span>💰 <b id="money"></b></span><span>🏢 Biens : <b id="count">0</b></span><span>📈 Patrimoine net : <b id="wealth"></b></span><span class="sp"></span>
- <button class="sec" onclick="openProps()">📋 Patrimoine</button><button class="sec" onclick="openFin()">💶 Finances</button>
+ <button class="sec" onclick="openBizList()">🏪 Entreprises</button><button class="sec" onclick="openProps()">📋 Patrimoine</button><button class="sec" onclick="openFin()">💶 Finances</button>
  <button class="sec" id="spd" onclick="cycleSpeed()">⏩ x1</button><button class="sec" id="night" onclick="toggleNight()">🌙 Nuit</button><button class="sec" onclick="gameMenu()">☰ Menu</button></div>
  <div id="filters"></div><div id="panel"></div>
  <div id="legend"></div>
@@ -61,7 +61,7 @@ function gen(){seed=42;for(let bx=0;bx<N;bx++)for(let bz=0;bz<N;bz++){const dc=M
    base:st,baseOwner:st==='occupied'?'Entreprise concurrente':st==='blocked'?'—':'Aucun',baseCond:cond,
    x:(bx-(N-1)/2)*PITCH+(i-1)*LOT,z:(bz-(N-1)/2)*PITCH+(j-1)*LOT,address:`${1+id%90} ${STREETS[(bx+bz)%6]}`,name:`${TYPES[type][0]} n°${id+1}`});}}}
 // ---------- ÉTAT ----------
-const newG=m=>({money:m,day:0,owned:[],sublet:[],leased:[],cond:{},debt:0,hist:[]});
+const newG=m=>({money:m,day:0,owned:[],sublet:[],leased:[],cond:{},debt:0,hist:[],biz:{},bizRev:0});
 let G=newG(50000),inGame=false,sel=null,filter='all',speed=1,uiPause=false;
 const base=new Date(2026,0,1);
 const fmt=n=>Math.round(n).toLocaleString('fr-FR')+' €';
@@ -73,9 +73,8 @@ function apply(){buildings.forEach(b=>{b.state=b.base;b.owner=b.baseOwner;b.cond
  if(G.owned.includes(b.id)){b.state=G.sublet.includes(b.id)?'sublet':'owned';b.owner='Vous'}
  else if(G.leased.includes(b.id)){b.state='leased';b.owner='Vous (locataire)'}})}
 function proj(){let inc=0,exp=0;G.sublet.forEach(i=>inc+=buildings[i].rent);G.owned.forEach(i=>exp+=Math.round(buildings[i].price*.001));
- G.leased.forEach(i=>exp+=buildings[i].rent);exp+=Math.round(G.debt*.015);return{inc,exp}}
-function month(){const p=proj();G.money+=p.inc-p.exp;G.hist.push(p);if(G.hist.length>12)G.hist.shift();
- toast(`Bilan du mois : ${p.inc-p.exp>=0?'+':''}${fmt(p.inc-p.exp)}`+(G.money<0?' ⚠ Trésorerie négative !':''));save()}
+ G.leased.forEach(i=>exp+=buildings[i].rent);exp+=Math.round(G.debt*.015);Object.values(G.biz).forEach(z=>{if(z.open)exp+=z.staff*1800});return{inc,exp}}
+function month(){const p=proj(),rev=Math.round(G.bizRev),n=p.inc+rev-p.exp;G.bizRev=0;G.money+=p.inc-p.exp;G.hist.push({inc:p.inc+rev,exp:p.exp});if(G.hist.length>12)G.hist.shift();toast(`Bilan du mois : ${n>=0?'+':''}${fmt(n)}`+(G.money<0?' ⚠ Trésorerie négative !':''));save()}
 function hud(){const mine=buildings.filter(b=>G.owned.includes(b.id));
  $('money').textContent=fmt(G.money);$('count').textContent=G.owned.length+G.leased.length;
  $('wealth').textContent=fmt(G.money+mine.reduce((a,b)=>a+valueOf(b),0)-G.debt);
@@ -122,7 +121,7 @@ function mkCars(){const n=46;carMesh=new THREE.InstancedMesh(new THREE.BoxGeomet
 const dm=new THREE.Object3D();
 function moveCars(dt){if(!carMesh)return;cars.forEach((c,i)=>{c.p+=c.s*c.v*dt*60*(uiPause?0:Math.max(speed,.3));if(c.p>EXT)c.p=-EXT;if(c.p<-EXT)c.p=EXT;
  const l=c.s*1.6;dm.position.set(c.ax?c.c+l:c.p,.7,c.ax?c.p:c.c-l);dm.rotation.set(0,c.ax?Math.PI/2:0,0);dm.updateMatrix();carMesh.setMatrixAt(i,dm.matrix)});carMesh.instanceMatrix.needsUpdate=true}
-function paint(){buildings.forEach(b=>{b.roof.material.color.set(STATUS[b.state][1]);
+function paint(){buildings.forEach(b=>{b.roof.material.color.set(b.shop?'#1fd1c4':STATUS[b.state][1]);
  const show=filter==='all'||(filter==='sale'?(b.state==='sale'||b.state==='rent'):filter==='mine'?(G.owned.includes(b.id)||G.leased.includes(b.id)):b.type===filter);
  b.body.material.opacity=b.roof.material.opacity=show?1:.12});hud()}
 // ---------- CAMÉRA & SOURIS ----------
@@ -154,7 +153,8 @@ function show(){const b=sel;if(!b)return;const [lab,col]=STATUS[b.state];
  if(own){btn+=B('sublet',G.sublet.includes(b.id)?'Arrêter la sous-location':`Mettre en location (+${fmt(b.rent)}/mois)`,'sec');
   btn+=B('reno',`Rénover (${fmt(renoCost(b))})`,'sec',!renoCost(b)||G.money<renoCost(b));btn+=B('sell',`Vendre (${fmt(valueOf(b)*.92)})`,'red')}
  if(b.state==='leased')btn+=B('unrent',`Résilier le bail (caution rendue : ${fmt(b.rent)})`,'red');
- if(own||b.state==='leased')btn+=B('co','Créer une entreprise (Phase 2)','sec',true);
+ if(own||b.state==='leased')btn+=G.biz[b.id]?B('biz','🏪 Gérer l\'entreprise',''):B('co','🏪 Créer une entreprise','grn',!['commerce','bureau','entrepot'].includes(b.type));
+ if(b.shop)btn+=B('shop','🛒 Entrer dans le magasin','grn');
  btn+=B('focus','🎯 Centrer la caméra','sec');
  $('panel').innerHTML=`<h2>${b.name}</h2><div>${b.address}</div><span class="tag" style="background:${col}">${lab}</span>
  <table><tr><td>Type</td><td>${TYPES[b.type][0]}</td></tr><tr><td>Surface</td><td>${b.area} m²</td></tr><tr><td>Niveaux</td><td>${b.floors}</td></tr>
@@ -163,7 +163,8 @@ function show(){const b=sel;if(!b)return;const [lab,col]=STATUS[b.state];
  <tr><td>Loyer / mois</td><td>${fmt(b.rent)}</td></tr><tr><td>Valeur estimée</td><td>${fmt(valueOf(b))}</td></tr>
  <tr><td>Activités</td><td>${ACT[b.type]}</td></tr><tr><td>Rénovation</td><td>${fmt(renoCost(b))}</td></tr></table>${btn}`;$('panel').style.display='block'}
 function act(a){const b=sel;if(!b)return;const rm=(arr,id)=>{const i=arr.indexOf(id);if(i>=0)arr.splice(i,1)};
- if(a==='focus')return focus(b);
+ if(a==='focus')return focus(b);if(a==='co')return wizStart();if(a==='biz')return bizModal(b.id);if(a==='shop')return shopOpen();
+ if(['sell','unrent','sublet'].includes(a)&&G.biz[b.id])return toast('Ce bien héberge une entreprise');
  if(a==='buy'){const c=Math.round(b.price*1.05);if(b.state!=='sale'||G.money<c)return;G.money-=c;G.owned.push(b.id);toast('Achat effectué : '+b.name)}
  if(a==='rent'){if(b.state!=='rent'||G.money<b.rent*2)return;G.money-=b.rent*2;G.leased.push(b.id);toast('Bail signé : '+b.name)}
  if(a==='unrent'){G.money+=b.rent;rm(G.leased,b.id);toast('Bail résilié, caution remboursée')}
@@ -179,7 +180,7 @@ function openProps(){const l=buildings.filter(b=>G.owned.includes(b.id)||G.lease
 function goTo(id){closeModal();sel=buildings[id];focus(sel);show()}
 function openFin(){const p=proj(),mx=Math.max(1,...G.hist.map(h=>Math.max(h.inc,h.exp)),p.inc,p.exp);
  modal(`<h2>💶 Finances</h2><table><tr><td>Trésorerie</td><td>${fmt(G.money)}</td></tr><tr><td>Dette</td><td>${fmt(G.debt)} (intérêt 1,5 %/mois)</td></tr>
- <tr><td>Revenus mensuels</td><td style="color:#3ddc84">+${fmt(p.inc)}</td></tr><tr><td>Dépenses mensuelles</td><td style="color:#ff6b6b">−${fmt(p.exp)}</td></tr><tr><td><b>Résultat mensuel</b></td><td><b>${fmt(p.inc-p.exp)}</b></td></tr></table>
+ <tr><td>CA entreprises (mois en cours)</td><td style="color:#3ddc84">+${fmt(G.bizRev)}</td></tr><tr><td>Revenus locatifs mensuels</td><td style="color:#3ddc84">+${fmt(p.inc)}</td></tr><tr><td>Dépenses mensuelles</td><td style="color:#ff6b6b">−${fmt(p.exp)}</td></tr><tr><td><b>Résultat mensuel</b></td><td><b>${fmt(p.inc-p.exp)}</b></td></tr></table>
  <div>Historique (vert : revenus, rouge : dépenses)</div><div class="chart">${G.hist.map(h=>`<div><i style="height:${h.inc/mx*70}px;background:#3ddc84"></i><i style="height:${h.exp/mx*70}px;background:#ff6b6b"></i></div>`).join('')||'<small>Aucun mois écoulé.</small>'}</div>
  <div class="row"><button onclick="loan(10000)">Emprunter 10 000 €</button><button onclick="loan(25000)">Emprunter 25 000 €</button><button class="grn" onclick="repay(10000)">Rembourser 10 000 €</button><button class="sec" onclick="closeModal()">Fermer</button></div>`)}
 function loan(n){if(G.debt+n>100000)return toast('Plafond de dette : 100 000 €');G.money+=n;G.debt+=n;save();hud();openFin()}
@@ -195,13 +196,105 @@ function gameMenu(){uiPause=true;$('mbox').dataset.menu=1;modal(`<h2>☰ Menu</h
 addEventListener('keydown',e=>{if(e.key!=='Escape'||!inGame)return;$('modal').style.display==='flex'?closeModal():gameMenu()});
 function cycleSpeed(){speed=speed===1?2:speed===2?4:1;$('spd').textContent='⏩ x'+speed}
 let night=false;function toggleNight(){night=!night;scene.background.set(night?0x0b1226:0x9ec9e8);scene.fog.color.copy(scene.background);hemi.intensity=night?.3:.7;sun.intensity=night?.2:.8;$('night').textContent=night?'☀️ Jour':'🌙 Nuit'}
+// ---------- PHASE 2 : ENTREPRISES ----------
+const ITEMS={friteuse:['Friteuse pro',900,1,1],grill:['Grill',900,2,1],frigo:['Réfrigérateur',700,1,2],caisse:['Caisse enregistreuse',300,1,1],table:['Table',80,2,2],chaise:['Chaise',40,1,1],etagere:['Étagère',150,2,1],poubelle:['Poubelle',40,1,1],eclairage:['Éclairage',120,1,1],four:['Four pro',1100,2,1],vitrine:['Vitrine réfrigérée',800,3,1],portant:['Portant',120,2,1],cabine:["Cabine d'essayage",350,2,2],poste:['Poste de travail',250,2,1],ordi:['Ordinateur',600,1,1],imprimante:['Imprimante',200,1,1],fauteuil:['Fauteuil coiffure',500,2,2],miroir:['Miroir',150,1,1],tapis:['Tapis de course',1200,2,3],velo:['Vélo',800,1,2],banc:['Banc',400,2,1]};
+const SECT={
+ resto:{n:'Restauration rapide',t:['commerce'],minA:60,fee:500,stock:1000,sign:500,staff:3,rev:420,req:{friteuse:1,grill:1,frigo:1,caisse:1,table:2,chaise:4},opt:{etagere:1,poubelle:1,eclairage:1}},
+ cafe:{n:'Café et boulangerie',t:['commerce'],minA:45,fee:400,stock:600,sign:400,staff:2,rev:300,req:{four:1,vitrine:1,caisse:1,table:2,chaise:4},opt:{poubelle:1,eclairage:1}},
+ habit:{n:'Magasin de vêtements',t:['commerce'],minA:70,fee:500,stock:2000,sign:600,staff:2,rev:380,req:{portant:3,etagere:2,cabine:1,caisse:1},opt:{miroir:1,eclairage:1}},
+ coif:{n:'Salon de coiffure',t:['commerce'],minA:40,fee:400,stock:400,sign:400,staff:2,rev:280,req:{fauteuil:2,miroir:2,caisse:1},opt:{chaise:2,poubelle:1}},
+ bur:{n:'Bureau de services',t:['bureau','commerce'],minA:50,fee:600,stock:200,sign:300,staff:3,rev:450,req:{poste:3,chaise:3,ordi:3,imprimante:1},opt:{etagere:1,poubelle:1}},
+ sport:{n:'Salle de sport',t:['commerce','entrepot'],minA:150,fee:800,stock:500,sign:700,staff:3,rev:620,req:{tapis:3,velo:3,banc:2,caisse:1},opt:{miroir:2,poubelle:1}}};
+const QN={0.8:'Économique',1:'Standard',1.3:'Premium'},clean=t=>(t||'').replace(/[<>"&']/g,'');
+const pkg=s=>Math.round(Object.entries({...s.req,...s.opt}).reduce((a,[i,n])=>a+ITEMS[i][1]*n,0)*1.25);
+const dimsOf=(id,r)=>r?[ITEMS[id][3],ITEMS[id][2]]:[ITEMS[id][2],ITEMS[id][3]];
+const gridOf=b=>{const a=b.area/b.floors,w=Math.max(10,Math.min(22,Math.round(Math.sqrt(a*1.3))));return{w,h:Math.max(8,Math.min(16,Math.round(a/w)))}};
+const doorCells=g=>{const m=Math.floor(g.w/2);return[[m-1,g.h-1],[m,g.h-1]]};
+function occ(biz,g){const o=Array.from({length:g.h},()=>Array(g.w).fill(-1));biz.layout.forEach((p,i)=>{const[w,h]=dimsOf(p.id,p.r);for(let y=p.y;y<p.y+h;y++)for(let x=p.x;x<p.x+w;x++)if(o[y]&&o[y][x]!==undefined)o[y][x]=i});return o}
+function canPlace(g,id,x,y,r,o){const[w,h]=dimsOf(id,r);if(x<0||y<0||x+w>g.w||y+h>g.h)return false;const d=doorCells(g);
+ for(let j=y;j<y+h;j++)for(let i=x;i<x+w;i++)if(o[j][i]!==-1||d.some(c=>c[0]===i&&c[1]===j))return false;return true}
+function circ(biz,g){const o=occ(biz,g),seen=new Set(),q=[];doorCells(g).forEach(c=>{q.push(c);seen.add(c.join())});
+ while(q.length){const[x,y]=q.pop();[[1,0],[-1,0],[0,1],[0,-1]].forEach(([a,b])=>{const X=x+a,Y=y+b,k=X+','+Y;if(X<0||Y<0||X>=g.w||Y>=g.h||seen.has(k)||o[Y][X]!==-1)return;seen.add(k);q.push([X,Y])})}
+ return biz.layout.every(p=>{const[w,h]=dimsOf(p.id,p.r);for(let j=p.y-1;j<=p.y+h;j++)for(let i=p.x-1;i<=p.x+w;i++){if(((j===p.y-1||j===p.y+h)!==(i===p.x-1||i===p.x+w))&&seen.has(i+','+j))return true}return false})}
+function autoFit(biz,g,id){const o=occ(biz,g);for(const sp of[1,0])for(let y=0;y<g.h;y++)for(let x=0;x<g.w;x++)for(const r of[0,1]){if(!canPlace(g,id,x,y,r,o))continue;
+ const[w,h]=dimsOf(id,r);let ok=true;if(sp)for(let j=y-1;j<=y+h&&ok;j++)for(let i=x-1;i<=x+w;i++)if(o[j]&&o[j][i]!==undefined&&o[j][i]!==-1){ok=false;break}
+ if(ok){biz.layout.push({id,x,y,r});return true}}return false}
+function markShops(){let k=0;buildings.filter(b=>b.type==='commerce'&&b.base==='occupied').filter((b,i)=>i%6===0).slice(0,4).forEach(b=>{b.shop=true;b.name='Pro Équipement n°'+(++k);b.baseOwner='Pro Équipement SA'})}
+// assistant de création
+let W={};
+function wizStart(){W={bid:sel.id,s:null,name:'',q:1,mode:'auto'};wiz1()}
+function wiz1(){const b=buildings[W.bid];modal('<h2>Créer une entreprise — Secteur</h2>'+Object.entries(SECT).map(([k,s])=>{const ok=s.t.includes(b.type)&&b.area>=s.minA;
+ return `<div style="margin:6px 0;padding:8px;border:1px solid #2c3550;border-radius:8px"><b>${s.n}</b> — surface min ${s.minA} m², ${s.staff} salariés<br><small>Requis : ${Object.entries(s.req).map(([i,n])=>n+'× '+ITEMS[i][0]).join(', ')}</small><br><button ${ok?'':'disabled'} onclick="W.s='${k}';W.name='${s.n}';wiz2()">${ok?'Choisir':'Local inadapté'}</button></div>`}).join('')+'<div class="row"><button class="sec" onclick="closeModal()">Annuler</button></div>')}
+function quote(){const s=SECT[W.s];return{fee:s.fee,eq:W.mode==='auto'?pkg(s):0,stock:Math.round(s.stock*W.q),sign:Math.round(s.sign*W.q)}}
+function wiz2(){const s=SECT[W.s],c=quote(),tot=c.fee+c.eq+c.stock+c.sign;
+ modal(`<h2>${s.n}</h2>Nom commercial<br><input value="${clean(W.name)}" oninput="W.name=this.value" style="width:100%;padding:6px;margin:4px 0 10px">
+ Qualité :<div class="row" style="margin:4px 0 10px">${[.8,1,1.3].map(v=>`<button class="${W.q===v?'on':'sec'}" onclick="W.q=${v};wiz2()">${QN[v]}</button>`).join('')}</div>
+ Équipement :<div class="row" style="margin:4px 0 6px"><button class="${W.mode==='auto'?'on':'sec'}" onclick="W.mode='auto';wiz2()">Forfait automatique</button><button class="${W.mode==='manual'?'on':'sec'}" onclick="W.mode='manual';wiz2()">Achat manuel</button></div>
+ <small>${W.mode==='auto'?'Livré et placé automatiquement, mais 25 % plus cher.':'Aucun équipement offert : achetez-le au catalogue ou dans un magasin Pro Équipement (carte), puis placez-le.'}</small>
+ <table><tr><td>Frais administratifs</td><td>${fmt(c.fee)}</td></tr><tr><td>Mobilier et équipement</td><td>${W.mode==='auto'?fmt(c.eq):'à acheter'}</td></tr><tr><td>Stock initial</td><td>${fmt(c.stock)}</td></tr><tr><td>Enseigne et décoration</td><td>${fmt(c.sign)}</td></tr><tr><td><b>Total</b></td><td><b>${fmt(tot)}</b></td></tr></table>
+ <small>Hors loyer, travaux et fonds de roulement.</small><div class="row"><button class="grn" ${G.money<tot?'disabled':''} onclick="wizOk()">Confirmer (${fmt(tot)})</button><button class="sec" onclick="wiz1()">Retour</button></div>`)}
+function wizOk(){const s=SECT[W.s],c=quote(),tot=c.fee+c.eq+c.stock+c.sign;if(G.money<tot)return;G.money-=tot;
+ const biz={s:W.s,name:clean(W.name).slice(0,30)||s.n,q:W.q,open:false,staff:s.staff,stock:c.stock,inv:{},layout:[],orders:[],rev:0};G.biz[W.bid]=biz;
+ if(W.mode==='auto'){const g=gridOf(buildings[W.bid]);Object.entries({...s.req,...s.opt}).forEach(([i,n])=>{for(let k=0;k<n;k++)if(!autoFit(biz,g,i))biz.inv[i]=(biz.inv[i]||0)+1})}
+ save();hud();toast('Entreprise créée : '+biz.name);sel=buildings[W.bid];show();bizModal(W.bid)}
+// gestion
+function reqs(id){const b=buildings[id],biz=G.biz[id],s=SECT[biz.s],cnt={};biz.layout.forEach(p=>cnt[p.id]=(cnt[p.id]||0)+1);
+ const l=Object.entries(s.req).map(([i,n])=>({t:`${ITEMS[i][0]} installé : ${cnt[i]||0}/${n}`,ok:(cnt[i]||0)>=n}));
+ l.push({t:'Surface min '+s.minA+' m²',ok:b.area>=s.minA},{t:'Circulation et accès à la porte',ok:circ(biz,gridOf(b))},{t:'Au moins 1 employé',ok:biz.staff>=1});return l}
+function bizModal(id){const b=buildings[id],biz=G.biz[id],s=SECT[biz.s],r=reqs(id),all=r.every(x=>x.ok);
+ const inv=Object.keys(biz.inv).filter(k=>biz.inv[k]).map(k=>biz.inv[k]+'× '+ITEMS[k][0]).join(', ')||'aucun';
+ modal(`<h2>🏪 ${biz.name}</h2><small>${s.n} · ${b.address}</small><table><tr><td>Statut</td><td>${biz.open?'<b style="color:#3ddc84">Ouvert</b>':'Fermé'}</td></tr><tr><td>Qualité</td><td>${QN[biz.q]}</td></tr>
+ <tr><td>Chiffre d'affaires (hier)</td><td>${fmt(biz.rev)}</td></tr><tr><td>Stock</td><td>${fmt(biz.stock)}</td></tr><tr><td>Employés</td><td>${biz.staff} (${fmt(biz.staff*1800)}/mois)</td></tr>
+ <tr><td>Inventaire non installé</td><td>${inv}</td></tr><tr><td>Commandes en cours</td><td>${biz.orders.length}</td></tr></table>
+ <b>Conditions d'ouverture</b>${r.map(x=>`<div>${x.ok?'✅':'❌'} ${x.t}</div>`).join('')}
+ <div class="row"><button onclick="layoutModal(${id})">🪑 Aménager</button><button onclick="catalog(${id},0)">🛒 Catalogue</button>
+ <button class="${biz.open?'red':'grn'}" ${!biz.open&&!all?'disabled':''} onclick="toggleOpen(${id})">${biz.open?'Fermer':'Ouvrir'}</button>
+ <button class="sec" onclick="restock(${id})">📦 Stock +1 000 €</button><button class="sec" onclick="staff(${id},1)">👤 Embaucher</button><button class="sec" onclick="staff(${id},-1)">Licencier</button><button class="sec" onclick="closeModal()">Fermer</button></div>`)}
+function toggleOpen(id){const biz=G.biz[id];if(!biz.open&&!reqs(id).every(x=>x.ok))return;biz.open=!biz.open;save();toast(biz.open?'🎉 Entreprise ouverte !':'Entreprise fermée');bizModal(id)}
+function restock(id){if(G.money<1000)return toast('Trésorerie insuffisante');G.money-=1000;G.biz[id].stock+=1000;save();hud();bizModal(id)}
+function staff(id,d){const z=G.biz[id];z.staff=Math.max(0,Math.min(12,z.staff+d));save();bizModal(id)}
+function openBizList(){const l=Object.keys(G.biz);modal('<h2>🏪 Entreprises ('+l.length+')</h2>'+(l.length?`<table>${l.map(i=>`<tr><td>${G.biz[i].name}<br><small>${buildings[i].address}</small></td><td>${G.biz[i].open?'Ouvert':'Fermé'}<br>${fmt(G.biz[i].rev)}/j</td><td><button onclick="bizModal(${i})">Gérer</button></td></tr>`).join('')}</table>`:'<p>Aucune entreprise. Achetez ou louez un local commercial, puis cliquez dessus.</p>')+'<div class="row"><button class="sec" onclick="closeModal()">Fermer</button></div>')}
+// aménagement
+let L={};
+function layoutModal(id){L={id,sel:null,r:0};drawLayout()}
+function drawLayout(msg){const b=buildings[L.id],biz=G.biz[L.id],g=gridOf(b),o=occ(biz,g),d=doorCells(g);let cells='';
+ for(let y=0;y<g.h;y++)for(let x=0;x<g.w;x++){const i=o[y][x],isD=d.some(c=>c[0]===x&&c[1]===y),p=i>=0?biz.layout[i]:null;
+  cells+=`<div onclick="cell(${x},${y})" style="background:${isD?'#23995a':p?`hsl(${(ITEMS[p.id][1]*7)%360},45%,38%)`:'#222b45'};font-size:9px;display:flex;align-items:center;overflow:hidden;border:1px solid #0b1226;cursor:pointer">${p&&p.x===x&&p.y===y?ITEMS[p.id][0].slice(0,3):''}</div>`}
+ const inv=Object.entries(biz.inv).filter(e=>e[1]>0);
+ modal(`<h2>🪑 Aménagement — ${biz.name}</h2><small>Choisissez un objet puis cliquez sur la grille. Cliquez sur un objet posé pour le reprendre. Vert = porte.</small>
+ <div style="display:grid;grid-template-columns:repeat(${g.w},22px);grid-auto-rows:22px;margin:8px 0;max-width:100%;overflow:auto">${cells}</div>
+ <div class="row">${inv.map(([k,n])=>`<button class="${L.sel===k?'on':'sec'}" onclick="L.sel='${k}';drawLayout()">${ITEMS[k][0]} ×${n}</button>`).join('')||'<small>Inventaire vide : commandez du matériel.</small>'}</div>
+ <div class="row"><button class="sec" onclick="L.r=1-L.r;drawLayout()">🔄 Pivoter (${L.r?'vertical':'horizontal'})</button><button class="sec" onclick="bizModal(${L.id})">Retour</button></div><div style="color:#f5c542;margin-top:6px">${msg||''}</div>`)}
+function cell(x,y){const biz=G.biz[L.id],g=gridOf(buildings[L.id]),o=occ(biz,g),i=o[y][x];
+ if(i>=0){const p=biz.layout.splice(i,1)[0];biz.inv[p.id]=(biz.inv[p.id]||0)+1;save();return drawLayout()}
+ if(!L.sel||!biz.inv[L.sel])return drawLayout("Choisissez un objet dans l'inventaire.");
+ if(!canPlace(g,L.sel,x,y,L.r,o))return drawLayout('Placement impossible (collision, limite ou porte).');
+ biz.layout.push({id:L.sel,x,y,r:L.r});biz.inv[L.sel]--;save();drawLayout()}
+// catalogue & magasins
+let catB=null;
+function shopOpen(){const ids=Object.keys(G.biz);if(!ids.length)return toast("Créez d'abord une entreprise");catalog(+ids[0],1)}
+function catalog(id,shop){catB=id;const k=shop?.9:1;
+ modal(`<h2>${shop?'🛒 Magasin Pro Équipement':'🛒 Catalogue fournisseur'}</h2><small>${shop?'Achat sur place : −10 %, matériel emporté immédiatement.':'Livraison en 2 jours, +4 % de frais (min. 20 €).'}</small>
+ ${shop?`<div style="margin:8px 0">Destination : <select onchange="catB=+this.value">${Object.keys(G.biz).map(i=>`<option value="${i}" ${+i===id?'selected':''}>${G.biz[i].name}</option>`).join('')}</select></div>`:''}
+ <table>${Object.entries(ITEMS).map(([i,it])=>{const p=Math.round(it[1]*k),f=shop?0:Math.max(20,Math.round(p*.04));return `<tr><td>${it[0]} <small>(${it[2]}×${it[3]})</small></td><td>${fmt(p+f)}</td><td><button onclick="buyItem('${i}',${shop})">Acheter</button></td></tr>`}).join('')}</table>
+ <div class="row"><button class="sec" onclick="${shop?'closeModal()':`bizModal(${id})`}">Retour</button></div>`)}
+function buyItem(i,shop){const biz=G.biz[catB];if(!biz)return;const it=ITEMS[i],p=Math.round(it[1]*(shop?.9:1)),f=shop?0:Math.max(20,Math.round(p*.04));if(G.money<p+f)return toast('Trésorerie insuffisante');
+ G.money-=p+f;if(shop)biz.inv[i]=(biz.inv[i]||0)+1;else biz.orders.push({i,due:G.day+2});save();hud();toast(shop?'Acheté et emporté : '+it[0]:'Commande passée (livraison dans 2 jours)')}
+// simulation quotidienne
+function dayTick(){Object.entries(G.biz).forEach(([id,biz])=>{
+ biz.orders=biz.orders.filter(o=>{if(o.due<=G.day){biz.inv[o.i]=(biz.inv[o.i]||0)+1;toast('📦 Livraison reçue : '+ITEMS[o.i][0]);return false}return true});
+ if(!biz.open)return;if(!reqs(id).every(x=>x.ok)){biz.open=false;toast('⚠ '+biz.name+' fermée : conditions non remplies');return}
+ const s=SECT[biz.s],b=buildings[id],cnt={};biz.layout.forEach(p=>cnt[p.id]=(cnt[p.id]||0)+1);let extra=0;Object.entries(cnt).forEach(([i,n])=>extra+=Math.max(0,n-(s.req[i]||0)));
+ const loc=1.35-.5*Math.min(1,Math.hypot(b.x,b.z)/110);let rev=s.rev*biz.q*loc*(1+.08*Math.min(5,extra))*Math.sqrt(Math.min(1,biz.staff/s.staff))*(.85+Math.random()*.3),cogs=rev*.35;
+ if(biz.stock<cogs){rev*=.4;cogs=biz.stock;toast('⚠ Rupture de stock : '+biz.name)}
+ biz.stock-=cogs;biz.rev=Math.round(rev);G.money+=biz.rev;G.bizRev+=biz.rev})}
 // ---------- DÉMARRAGE ----------
 const setP=(p,t)=>{$('pb').style.width=p+'%';$('pt').textContent=t};
 async function boot(){
- $('legend').innerHTML=Object.values(STATUS).map(s=>`<i style="background:${s[1]}"></i>${s[0]}`).join('');
+ $('legend').innerHTML=Object.values(STATUS).map(s=>`<i style="background:${s[1]}"></i>${s[0]}`).join('')+'<i style="background:#1fd1c4"></i>Magasin pro';
  [['all','Tout'],['sale','À vendre / louer'],['mine','Mes biens'],['commerce','Commerces'],['logement','Logements'],['bureau','Bureaux'],['entrepot','Entrepôts']].forEach(([k,l])=>{
   const b=document.createElement('button');b.textContent=l;b.className=k==='all'?'on':'sec';b.onclick=()=>{filter=k;[...$('filters').children].forEach(c=>c.className='sec');b.className='on';paint()};$('filters').appendChild(b)});
- setP(5,'Génération de la ville…');gen();await sleep(200);
+ setP(5,'Génération de la ville…');gen();markShops();await sleep(200);
  for(let i=0;i<buildings.length;i+=36){buildings.slice(i,i+36).forEach(mk);setP(10+i/buildings.length*60,'Construction des bâtiments…');await sleep()}
  setP(75,'Routes et végétation…');roads();trees();await sleep(150);
  setP(90,'Circulation…');mkCars();await sleep(150);
@@ -210,7 +303,7 @@ async function boot(){
 let last=performance.now(),acc=0;
 (function loop(t){requestAnimationFrame(loop);const dt=Math.min((t-last)/1000,.1);last=t;
  if(!inGame){C.yaw+=dt*.08;updCam()}
- else if(!uiPause){acc+=dt*speed;if(acc>=1.5){acc=0;G.day++;if(G.day%30===0)month();hud()}}
+ else if(!uiPause){acc+=dt*speed;if(acc>=1.5){acc=0;G.day++;dayTick();if(G.day%30===0)month();hud()}}
  moveCars(dt);ren.render(scene,cam)})(performance.now());
 boot();
 </script></body></html>
