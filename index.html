@@ -276,10 +276,10 @@ function shopOpen(){const ids=Object.keys(G.biz);if(!ids.length)return toast("Cr
 function catalog(id,shop){catB=id;const k=shop?.9:1;
  modal(`<h2>${shop?'🛒 Magasin Pro Équipement':'🛒 Catalogue fournisseur'}</h2><small>${shop?'Achat sur place : −10 %, matériel emporté immédiatement.':'Livraison en 2 jours, +4 % de frais (min. 20 €).'}</small>
  ${shop?`<div style="margin:8px 0">Destination : <select onchange="catB=+this.value">${Object.keys(G.biz).map(i=>`<option value="${i}" ${+i===id?'selected':''}>${G.biz[i].name}</option>`).join('')}</select></div>`:''}
- <table>${Object.entries(ITEMS).map(([i,it])=>{const p=Math.round(it[1]*k),f=shop?0:Math.max(20,Math.round(p*.04));return `<tr><td>${it[0]} <small>(${it[2]}×${it[3]})</small></td><td>${fmt(p+f)}</td><td><button onclick="buyItem('${i}',${shop})">Acheter</button></td></tr>`}).join('')}</table>
+ <table>${Object.entries(ITEMS).map(([i,it])=>{const p=Math.round(it[1]*k),f=shop?0:(typeof feeOf==='function'?feeOf(p):Math.max(20,Math.round(p*.04)));return `<tr><td>${it[0]} <small>(${it[2]}×${it[3]})</small></td><td>${fmt(p+f)}</td><td><button onclick="buyItem('${i}',${shop})">Acheter</button></td></tr>`}).join('')}</table>
  <div class="row"><button class="sec" onclick="${shop?'closeModal()':`bizModal(${id})`}">Retour</button></div>`)}
-function buyItem(i,shop){const biz=G.biz[catB];if(!biz)return;const it=ITEMS[i],p=Math.round(it[1]*(shop?.9:1)),f=shop?0:Math.max(20,Math.round(p*.04));if(G.money<p+f)return toast('Trésorerie insuffisante');
- G.money-=p+f;if(shop)biz.inv[i]=(biz.inv[i]||0)+1;else biz.orders.push({i,due:G.day+2});save();hud();toast(shop?'Acheté et emporté : '+it[0]:'Commande passée (livraison dans 2 jours)')}
+function buyItem(i,shop){const biz=G.biz[catB];if(!biz)return;const it=ITEMS[i],p=Math.round(it[1]*(shop?.9:1)),f=shop?0:(typeof feeOf==='function'?feeOf(p):Math.max(20,Math.round(p*.04)));if(G.money<p+f)return toast('Trésorerie insuffisante');
+ G.money-=p+f;if(shop)biz.inv[i]=(biz.inv[i]||0)+1;else biz.orders.push({i,due:G.day+(typeof fastDel==='function'&&fastDel()?1:2)});save();hud();toast(shop?'Acheté et emporté : '+it[0]:'Commande passée (livraison dans 2 jours)')}
 // simulation quotidienne
 function dayTick(){Object.entries(G.biz).forEach(([id,biz])=>{
  biz.orders=biz.orders.filter(o=>{if(o.due<=G.day){biz.inv[o.i]=(biz.inv[o.i]||0)+1;toast('📦 Livraison reçue : '+ITEMS[o.i][0]);return false}return true});
@@ -307,4 +307,5 @@ let last=performance.now(),acc=0;
  moveCars(dt);ren.render(scene,cam)})(performance.now());
 boot();
 </script>
-<script src="phase3.js"></script></body></html>
+<script src="phase3.js"></script>
+<script src="phase4.js"></script></body></html>
