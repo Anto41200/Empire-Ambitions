@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Empire Ambitions — Phase 1</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:#111;color:#e8eaf0;overflow:hidden}
+#top{position:fixed;top:0;left:0;right:0;height:46px;background:#1b2030;display:flex;gap:22px;align-items:center;padding:0 16px;z-index:5;border-bottom:1px solid #2c3550;font-size:14px}
+#top b{color:#7fd1ff}#top .sp{flex:1}
+button{background:#2f6fed;color:#fff;border:0;border-radius:6px;padding:7px 12px;cursor:pointer;font-size:13px}
+button:disabled{background:#444;cursor:not-allowed}button.sec{background:#2c3550}
+#filters{position:fixed;top:56px;left:10px;z-index:5;display:flex;gap:6px;flex-wrap:wrap;max-width:60vw}
+#filters button.on{background:#2f6fed}
+#panel{position:fixed;top:56px;right:10px;width:310px;background:#1b2030ee;border:1px solid #2c3550;border-radius:10px;padding:14px;z-index:5;display:none;font-size:13px}
+#panel h2{margin:0 0 4px;font-size:17px}#panel table{width:100%;margin:8px 0}#panel td{padding:2px 0}#panel td:last-child{text-align:right}
+.tag{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;color:#000}
+#legend{position:fixed;bottom:10px;left:10px;font-size:12px;background:#1b2030cc;padding:8px 10px;border-radius:8px;z-index:5}
+#legend i{display:inline-block;width:10px;height:10px;margin:0 4px 0 8px;border-radius:2px}
+#msg{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#2f6fed;padding:8px 16px;border-radius:8px;display:none;z-index:6}
+</style></head><body>
+<div id="top"><span>📅 <b id="date"></b></span><span>💰 <b id="money"></b></span><span>🏢 Biens : <b id="count">0</b></span><span>📈 Patrimoine : <b id="wealth"></b></span><span class="sp"></span>
+<button class="sec" id="pause">⏸ Pause</button><button class="sec" id="reset">Nouvelle partie</button></div>
+<div id="filters"></div><div id="panel"></div><div id="msg"></div>
+<div id="legend"><i style="background:#3ddc84"></i>À vendre<i style="background:#f5c542"></i>À louer<i style="background:#2f9bff"></i>Vôtre<i style="background:#999"></i>Occupé<i style="background:#e5484d"></i>Non constructible</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ---------- DONNÉES ----------
+const STATUS={sale:['À vendre','#3ddc84'],rent:['À louer','#f5c542'],owned:['Propriété du joueur','#2f9bff'],occupied:['Occupé','#999'],blocked:['Non constructible','#e5484d']};
+const TYPES={commerce:['Local commercial',0xc9a27e],logement:['Logement',0xb7c4d6],bureau:['Bureaux',0x7f9fb8],entrepot:['Entrepôt',0x8a8f6a]};
+const ACTIVITES={commerce:'Restauration, boutique, café, coiffure',logement:'Habitation',bureau:'Services, bureaux',entrepot:'Stockage, distribution'};
+const STREETS=['Rue Victor Hugo','Avenue de la République','Rue des Lilas','Boulevard Gambetta','Rue Pasteur','Rue du Commerce'];
+let seed=42;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
+const N=6,LOT=8,BLK=3,PITCH=BLK*LOT+7;
+const buildings=[];
+for(let bx=0;bx<N;bx++)for(let bz=0;bz<N;bz++){
+ const dc=Math.hypot(bx-(N-1)/2,bz-(N-1)/2);
+ for(let i=0;i<BLK;i++)for(let j=0;j<BLK;j++){
+  const r=rnd(),center=dc<2;
+  let type=center?(r<.5?'commerce':r<.8?'bureau':'logement'):(dc>3.2&&r<.35?'entrepot':r<.6?'logement':r<.8?'commerce':'bureau');
+  const w=5+Math.floor(rnd()*3),d=5+Math.floor(rnd()*3);
+  const floors=center?1+Math.floor(rnd()*(type==='bureau'?9:4)):1+Math.floor(rnd()*3);
+  const area=Math.round(w*d*floors*9);
+  const k=(center?1.6:1)*(type==='commerce'?1.3:1);
+  const price=Math.round(area*(900+rnd()*500)*k/1000)*1000;
+  const s=rnd();const state=s<.08?'blocked':s<.5?'sale':s<.7?'rent':'occupied';
+  const id=buildings.length;
+  buildings.push({id,type,floors,area,price,rent:Math.round(price*0.006/10)*10,state,w,d,h:floors*3.2+1,
+   x:(bx-(N-1)/2)*PITCH+(i-1)*LOT,z:(bz-(N-1)/2)*PITCH+(j-1)*LOT,
+   address:`${1+id%90} ${STREETS[(bx+bz)%6]}`,name:`${TYPES[type][0]} n°${id+1}`,owner:state==='occupied'?'Entreprise concurrente':state==='blocked'?'—':'Aucun',
+   cond:['Neuf','Bon','Moyen','À rénover'][Math.floor(rnd()*4)]});
+ }}
+// ---------- ÉTAT & SAUVEGARDE ----------
+let G={money:50000,day:0,owned:[]};
+const base=new Date(2026,0,1);
+function load(){try{const s=JSON.parse(localStorage.getItem('ea_save'));if(s)G=s}catch(e){}buildings.forEach(b=>{if(G.owned.includes(b.id)){b.state='owned';b.owner='Vous'}})}
+function save(){try{localStorage.setItem('ea_save',JSON.stringify(G))}catch(e){}}
+load();
+const fmt=n=>n.toLocaleString('fr-FR')+' €';
+function hud(){const mine=buildings.filter(b=>b.state==='owned');
+ document.getElementById('money').textContent=fmt(G.money);document.getElementById('count').textContent=mine.length;
+ document.getElementById('wealth').textContent=fmt(G.money+mine.reduce((a,b)=>a+b.price,0));
+ document.getElementById('date').textContent=new Date(base.getTime()+G.day*864e5).toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})}
+function toast(t){const m=document.getElementById('msg');m.textContent=t;m.style.display='block';setTimeout(()=>m.style.display='none',2200)}
+// ---------- SCÈNE ----------
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x9ec9e8);scene.fog=new THREE.Fog(0x9ec9e8,150,420);
+const cam=new THREE.PerspectiveCamera(50,innerWidth/innerHeight,.5,1000);
+const ren=new THREE.WebGLRenderer({antialias:true});ren.setSize(innerWidth,innerHeight);ren.shadowMap.enabled=true;document.body.appendChild(ren.domElement);
+scene.add(new THREE.HemisphereLight(0xffffff,0x556655,.7));
+const sun=new THREE.DirectionalLight(0xffffff,.8);sun.position.set(80,140,60);sun.castShadow=true;
+Object.assign(sun.shadow.camera,{left:-140,right:140,top:140,bottom:-140,far:400});sun.shadow.mapSize.set(2048,2048);scene.add(sun);
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(600,600),new THREE.MeshLambertMaterial({color:0x2f3338}));ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
+// blocs (trottoirs)
+for(let bx=0;bx<N;bx++)for(let bz=0;bz<N;bz++){
+ const p=new THREE.Mesh(new THREE.BoxGeometry(BLK*LOT+1,.3,BLK*LOT+1),new THREE.MeshLambertMaterial({color:0x8d9096}));
+ p.position.set((bx-(N-1)/2)*PITCH,.15,(bz-(N-1)/2)*PITCH);p.receiveShadow=true;scene.add(p)}
+// bâtiments
+const meshes=[];
+buildings.forEach(b=>{
+ const g=new THREE.Group();g.position.set(b.x,.3,b.z);
+ const body=new THREE.Mesh(new THREE.BoxGeometry(b.w,b.h,b.d),new THREE.MeshLambertMaterial({color:TYPES[b.type][1],transparent:true}));
+ body.position.y=b.h/2;body.castShadow=body.receiveShadow=true;body.userData.id=b.id;
+ const roof=new THREE.Mesh(new THREE.BoxGeometry(b.w+.3,.5,b.d+.3),new THREE.MeshLambertMaterial({transparent:true}));roof.position.y=b.h+.25;roof.userData.id=b.id;
+ const win=new THREE.Mesh(new THREE.BoxGeometry(b.w+.05,Math.max(.8,b.h-2),b.d+.05),new THREE.MeshLambertMaterial({color:0x2a3b52,transparent:true,opacity:.35}));win.position.y=b.h/2+.2;win.userData.id=b.id;
+ g.add(body,roof,win);scene.add(g);b.body=body;b.roof=roof;b.win=win;meshes.push(body,roof,win);});
+let filter='all';
+function paint(){buildings.forEach(b=>{
+ b.roof.material.color.set(STATUS[b.state][1]);
+ const show=filter==='all'||(filter==='sale'?(b.state==='sale'||b.state==='rent'):b.type===filter);
+ [b.body,b.roof].forEach(m=>m.material.opacity=show?1:.12);b.win.material.opacity=show?.35:.05;});hud()}
+paint();
+// ---------- CAMÉRA ----------
+const C={t:new THREE.Vector3(0,0,0),yaw:.8,pitch:.9,dist:170};
+function updCam(){C.pitch=Math.max(.15,Math.min(1.5,C.pitch));C.dist=Math.max(25,Math.min(380,C.dist));
+ cam.position.set(C.t.x+C.dist*Math.cos(C.pitch)*Math.sin(C.yaw),C.t.y+C.dist*Math.sin(C.pitch),C.t.z+C.dist*Math.cos(C.pitch)*Math.cos(C.yaw));cam.lookAt(C.t)}
+let drag=null,moved=0;const el=ren.domElement;
+el.addEventListener('contextmenu',e=>e.preventDefault());
+el.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,pan:e.button===2||e.shiftKey};moved=0;el.setPointerCapture(e.pointerId)});
+el.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;moved+=Math.abs(dx)+Math.abs(dy);drag.x=e.clientX;drag.y=e.clientY;
+ if(drag.pan){const k=C.dist*.0016;C.t.x+=(-dx*Math.cos(C.yaw)-dy*Math.sin(C.yaw))*k;C.t.z+=(dx*Math.sin(C.yaw)-dy*Math.cos(C.yaw))*k}
+ else{C.yaw-=dx*.006;C.pitch+=dy*.006}updCam()});
+el.addEventListener('pointerup',e=>{const was=drag;drag=null;if(was&&moved<5)pick(e)});
+el.addEventListener('wheel',e=>{e.preventDefault();C.dist*=e.deltaY>0?1.1:.9;updCam()},{passive:false});
+addEventListener('resize',()=>{cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();ren.setSize(innerWidth,innerHeight)});
+// ---------- SÉLECTION & ACHAT ----------
+const ray=new THREE.Raycaster(),panel=document.getElementById('panel');let sel=null;
+const outline=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshBasicMaterial({color:0xffffff,wireframe:true}));outline.visible=false;scene.add(outline);
+function pick(e){ray.setFromCamera({x:e.clientX/innerWidth*2-1,y:-(e.clientY/innerHeight)*2+1},cam);
+ const h=ray.intersectObjects(meshes)[0];if(!h){sel=null;panel.style.display='none';outline.visible=false;return}
+ sel=buildings[h.object.userData.id];show()}
+function show(){const b=sel;if(!b)return;const [lab,col]=STATUS[b.state];
+ outline.visible=true;outline.scale.set(b.w+.6,b.h+.8,b.d+.6);outline.position.set(b.x,.3+b.h/2,b.z);
+ const reno=Math.round(b.area*(b.cond==='À rénover'?220:b.cond==='Moyen'?90:b.cond==='Bon'?30:0));
+ const canBuy=b.state==='sale',afford=G.money>=Math.round(b.price*1.05);
+ panel.innerHTML=`<h2>${b.name}</h2><div>${b.address}</div><span class="tag" style="background:${col}">${lab}</span>
+ <table><tr><td>Type</td><td>${TYPES[b.type][0]}</td></tr><tr><td>Surface</td><td>${b.area} m²</td></tr><tr><td>Niveaux</td><td>${b.floors}</td></tr>
+ <tr><td>État</td><td>${b.cond}</td></tr><tr><td>Propriétaire</td><td>${b.owner}</td></tr>
+ <tr><td>Prix de vente</td><td>${b.state==='sale'?fmt(b.price):'—'}</td></tr><tr><td>Loyer / mois</td><td>${b.state==='rent'?fmt(b.rent):'—'}</td></tr>
+ <tr><td>Activités autorisées</td><td>${ACTIVITES[b.type]}</td></tr><tr><td>Rénovation estimée</td><td>${fmt(reno)}</td></tr></table>
+ ${canBuy?`<button id="buy" ${afford?'':'disabled'}>Acheter (${fmt(Math.round(b.price*1.05))} frais 5 % inclus)</button>`:''}
+ ${b.state==='owned'?'<button disabled>Créer une entreprise (Phase 2)</button>':''}`;
+ panel.style.display='block';const bb=document.getElementById('buy');if(bb)bb.onclick=buy}
+function buy(){const b=sel,cost=Math.round(b.price*1.05);if(b.state!=='sale'||G.money<cost)return;
+ G.money-=cost;G.owned.push(b.id);b.state='owned';b.owner='Vous';save();paint();show();toast('Achat effectué : '+b.name)}
+// filtres
+const F=[['all','Tout'],['sale','À vendre / louer'],['commerce','Commerces'],['logement','Logements'],['bureau','Bureaux'],['entrepot','Entrepôts']];
+const fd=document.getElementById('filters');
+F.forEach(([k,l])=>{const b=document.createElement('button');b.textContent=l;b.className='sec'+(k==='all'?' on':'');b.onclick=()=>{filter=k;[...fd.children].forEach(c=>c.classList.remove('on'));b.classList.add('on');paint()};fd.appendChild(b)});
+// temps
+let paused=false;document.getElementById('pause').onclick=function(){paused=!paused;this.textContent=paused?'▶ Reprendre':'⏸ Pause'};
+setInterval(()=>{if(!paused){G.day++;if(G.day%30===0)save();hud()}},1500);
+document.getElementById('reset').onclick=()=>{if(confirm('Effacer la sauvegarde ?')){localStorage.removeItem('ea_save');location.reload()}};
+updCam();(function loop(){requestAnimationFrame(loop);ren.render(scene,cam)})();
+</script></body></html>
