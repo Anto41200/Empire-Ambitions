@@ -73,8 +73,8 @@ function apply(){buildings.forEach(b=>{b.state=b.base;b.owner=b.baseOwner;b.cond
  if(G.owned.includes(b.id)){b.state=G.sublet.includes(b.id)?'sublet':'owned';b.owner='Vous'}
  else if(G.leased.includes(b.id)){b.state='leased';b.owner='Vous (locataire)'}})}
 function proj(){let inc=0,exp=0;G.sublet.forEach(i=>inc+=buildings[i].rent);G.owned.forEach(i=>exp+=Math.round(buildings[i].price*.001));
- G.leased.forEach(i=>exp+=buildings[i].rent);exp+=Math.round(G.debt*.015);Object.values(G.biz).forEach(z=>{if(z.open)exp+=z.staff*1800});return{inc,exp}}
-function month(){const p=proj(),rev=Math.round(G.bizRev),n=p.inc+rev-p.exp;G.bizRev=0;G.money+=p.inc-p.exp;G.hist.push({inc:p.inc+rev,exp:p.exp});if(G.hist.length>12)G.hist.shift();toast(`Bilan du mois : ${n>=0?'+':''}${fmt(n)}`+(G.money<0?' ⚠ Trésorerie négative !':''));save()}
+ G.leased.forEach(i=>exp+=buildings[i].rent);exp+=Math.round(G.debt*.015);Object.values(G.biz).forEach(z=>{if(z.open)exp+=z.staff*(1800+150*(z.train||0))});return{inc,exp}}
+function month(){window.p3Month&&p3Month();const p=proj(),rev=Math.round(G.bizRev),n=p.inc+rev-p.exp;G.bizRev=0;G.money+=p.inc-p.exp;G.hist.push({inc:p.inc+rev,exp:p.exp});if(G.hist.length>12)G.hist.shift();toast(`Bilan du mois : ${n>=0?'+':''}${fmt(n)}`+(G.money<0?' ⚠ Trésorerie négative !':''));save()}
 function hud(){const mine=buildings.filter(b=>G.owned.includes(b.id));
  $('money').textContent=fmt(G.money);$('count').textContent=G.owned.length+G.leased.length;
  $('wealth').textContent=fmt(G.money+mine.reduce((a,b)=>a+valueOf(b),0)-G.debt);
@@ -121,7 +121,7 @@ function mkCars(){const n=46;carMesh=new THREE.InstancedMesh(new THREE.BoxGeomet
 const dm=new THREE.Object3D();
 function moveCars(dt){if(!carMesh)return;cars.forEach((c,i)=>{c.p+=c.s*c.v*dt*60*(uiPause?0:Math.max(speed,.3));if(c.p>EXT)c.p=-EXT;if(c.p<-EXT)c.p=EXT;
  const l=c.s*1.6;dm.position.set(c.ax?c.c+l:c.p,.7,c.ax?c.p:c.c-l);dm.rotation.set(0,c.ax?Math.PI/2:0,0);dm.updateMatrix();carMesh.setMatrixAt(i,dm.matrix)});carMesh.instanceMatrix.needsUpdate=true}
-function paint(){buildings.forEach(b=>{b.roof.material.color.set(b.shop?'#1fd1c4':STATUS[b.state][1]);
+function paint(){buildings.forEach(b=>{b.roof.material.color.set(b.shop?'#1fd1c4':b.flash?'#ff4fd8':STATUS[b.state][1]);
  const show=filter==='all'||(filter==='sale'?(b.state==='sale'||b.state==='rent'):filter==='mine'?(G.owned.includes(b.id)||G.leased.includes(b.id)):b.type===filter);
  b.body.material.opacity=b.roof.material.opacity=show?1:.12});hud()}
 // ---------- CAMÉRA & SOURIS ----------
@@ -146,7 +146,7 @@ function focus(b){C.t.set(b.x,0,b.z);C.dist=70;updCam()}
 // ---------- FICHE & ACTIONS ----------
 function show(){const b=sel;if(!b)return;const [lab,col]=STATUS[b.state];
  outline.visible=true;outline.scale.set(b.w+.7,b.h+.9,b.d+.7);outline.position.set(b.x,.3+b.h/2,b.z);
- const buy=Math.round(b.price*1.05),own=G.owned.includes(b.id);let btn='';
+ const buy=buyCost(b),own=G.owned.includes(b.id);let btn='';
  const B=(a,t,cls,dis)=>`<button class="${cls||''}" ${dis?'disabled':''} onclick="act('${a}')">${t}</button>`;
  if(b.state==='sale')btn+=B('buy',`Acheter (${fmt(buy)}, frais 5 % inclus)`,'',G.money<buy);
  if(b.state==='rent')btn+=B('rent',`Louer (1er loyer + caution : ${fmt(b.rent*2)})`,'grn',G.money<b.rent*2);
@@ -165,7 +165,7 @@ function show(){const b=sel;if(!b)return;const [lab,col]=STATUS[b.state];
 function act(a){const b=sel;if(!b)return;const rm=(arr,id)=>{const i=arr.indexOf(id);if(i>=0)arr.splice(i,1)};
  if(a==='focus')return focus(b);if(a==='co')return wizStart();if(a==='biz')return bizModal(b.id);if(a==='shop')return shopOpen();
  if(['sell','unrent','sublet'].includes(a)&&G.biz[b.id])return toast('Ce bien héberge une entreprise');
- if(a==='buy'){const c=Math.round(b.price*1.05);if(b.state!=='sale'||G.money<c)return;G.money-=c;G.owned.push(b.id);toast('Achat effectué : '+b.name)}
+ if(a==='buy'){const c=buyCost(b);if(b.state!=='sale'||G.money<c)return;G.money-=c;G.owned.push(b.id);toast('Achat effectué : '+b.name)}
  if(a==='rent'){if(b.state!=='rent'||G.money<b.rent*2)return;G.money-=b.rent*2;G.leased.push(b.id);toast('Bail signé : '+b.name)}
  if(a==='unrent'){G.money+=b.rent;rm(G.leased,b.id);toast('Bail résilié, caution remboursée')}
  if(a==='sublet'){G.sublet.includes(b.id)?rm(G.sublet,b.id):G.sublet.push(b.id)}
@@ -285,7 +285,7 @@ function dayTick(){Object.entries(G.biz).forEach(([id,biz])=>{
  biz.orders=biz.orders.filter(o=>{if(o.due<=G.day){biz.inv[o.i]=(biz.inv[o.i]||0)+1;toast('📦 Livraison reçue : '+ITEMS[o.i][0]);return false}return true});
  if(!biz.open)return;if(!reqs(id).every(x=>x.ok)){biz.open=false;toast('⚠ '+biz.name+' fermée : conditions non remplies');return}
  const s=SECT[biz.s],b=buildings[id],cnt={};biz.layout.forEach(p=>cnt[p.id]=(cnt[p.id]||0)+1);let extra=0;Object.entries(cnt).forEach(([i,n])=>extra+=Math.max(0,n-(s.req[i]||0)));
- const loc=1.35-.5*Math.min(1,Math.hypot(b.x,b.z)/110);let rev=s.rev*biz.q*loc*(1+.08*Math.min(5,extra))*Math.sqrt(Math.min(1,biz.staff/s.staff))*(.85+Math.random()*.3),cogs=rev*.35;
+ const loc=1.35-.5*Math.min(1,Math.hypot(b.x,b.z)/110);let rev=s.rev*biz.q*loc*(1+.08*Math.min(5,extra))*Math.sqrt(Math.min(1,biz.staff/s.staff))*(.85+Math.random()*.3)*(window.bizMult?bizMult(id,biz):1),cogs=rev*.35;
  if(biz.stock<cogs){rev*=.4;cogs=biz.stock;toast('⚠ Rupture de stock : '+biz.name)}
  biz.stock-=cogs;biz.rev=Math.round(rev);G.money+=biz.rev;G.bizRev+=biz.rev})}
 // ---------- DÉMARRAGE ----------
@@ -303,7 +303,8 @@ async function boot(){
 let last=performance.now(),acc=0;
 (function loop(t){requestAnimationFrame(loop);const dt=Math.min((t-last)/1000,.1);last=t;
  if(!inGame){C.yaw+=dt*.08;updCam()}
- else if(!uiPause){acc+=dt*speed;if(acc>=1.5){acc=0;G.day++;dayTick();if(G.day%30===0)month();hud()}}
+ else if(!uiPause){acc+=dt*speed;if(acc>=1.5){acc=0;G.day++;dayTick();window.p3Day&&p3Day();if(G.day%30===0)month();hud()}}
  moveCars(dt);ren.render(scene,cam)})(performance.now());
 boot();
-</script></body></html>
+</script>
+<script src="phase3.js"></script></body></html>
