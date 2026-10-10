@@ -138,7 +138,7 @@ el.addEventListener('pointermove',e=>{if(!inGame)return;
  const dx=e.clientX-drag.x,dy=e.clientY-drag.y;moved+=Math.abs(dx)+Math.abs(dy);drag.x=e.clientX;drag.y=e.clientY;
  if(drag.pan){const k=C.dist*.0016;C.t.x+=(-dx*Math.cos(C.yaw)-dy*Math.sin(C.yaw))*k;C.t.z+=(dx*Math.sin(C.yaw)-dy*Math.cos(C.yaw))*k;C.t.x=Math.max(-EXT,Math.min(EXT,C.t.x));C.t.z=Math.max(-EXT,Math.min(EXT,C.t.z))}
  else{C.yaw-=dx*.006;C.pitch+=dy*.006}updCam()});
-el.addEventListener('pointerup',e=>{const was=drag;drag=null;if(was&&moved<5&&inGame){const h=hit(e);if(!h){sel=null;$('panel').style.display='none';outline.visible=false}else{sel=buildings[h.object.userData.id];show()}}});
+el.addEventListener('pointerup',e=>{const was=drag;drag=null;if(was&&moved<5&&inGame){const h=hit(e);if(!h){sel=null;$('panel').style.display='none';outline.visible=false}else{sel=buildings[h.object.userData.id];try{show()}catch(err){console.error(err);toast('Erreur fiche bâtiment : '+err.message)}}}});
 el.addEventListener('wheel',e=>{e.preventDefault();C.dist*=e.deltaY>0?1.1:.9;updCam()},{passive:false});
 addEventListener('resize',()=>{cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();ren.setSize(innerWidth,innerHeight)});
 const outline=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),new THREE.MeshBasicMaterial({color:0xffffff,wireframe:true}));outline.visible=false;scene.add(outline);
@@ -291,7 +291,7 @@ function dayTick(){Object.entries(G.biz).forEach(([id,biz])=>{
 // ---------- DÉMARRAGE ----------
 const setP=(p,t)=>{$('pb').style.width=p+'%';$('pt').textContent=t};
 async function boot(){
- $('legend').innerHTML=Object.values(STATUS).map(s=>`<i style="background:${s[1]}"></i>${s[0]}`).join('')+'<i style="background:#1fd1c4"></i>Magasin pro';
+ $('legend').innerHTML=Object.values(STATUS).map(s=>`<i style="background:${s[1]}"></i>${s[0]}`).join('')+'<i style="background:#1fd1c4"></i>Magasin meubles<i style="background:#ffb703"></i>Fournitures';
  [['all','Tout'],['sale','À vendre / louer'],['mine','Mes biens'],['commerce','Commerces'],['logement','Logements'],['bureau','Bureaux'],['entrepot','Entrepôts']].forEach(([k,l])=>{
   const b=document.createElement('button');b.textContent=l;b.className=k==='all'?'on':'sec';b.onclick=()=>{filter=k;[...$('filters').children].forEach(c=>c.className='sec');b.className='on';paint()};$('filters').appendChild(b)});
  setP(5,'Génération de la ville…');gen();markShops();await sleep(200);
@@ -305,7 +305,302 @@ let last=performance.now(),acc=0;
  if(!inGame){C.yaw+=dt*.08;updCam()}
  else if(!uiPause){acc+=dt*speed;if(acc>=1.5){acc=0;G.day++;dayTick();window.p3Day&&p3Day();if(G.day%30===0)month();hud()}}
  moveCars(dt);ren.render(scene,cam)})(performance.now());
+</script>
+<script>
+// ===== Empire Ambitions — Phase 3 =====
+// ===== Empire Ambitions — Phase 3 : marché, concurrence, marketing, événements =====
+const ITEMS0=JSON.parse(JSON.stringify(ITEMS)),SK=['resto','cafe','habit','coif','sport'];
+const CAMP={pub:['Publicité locale',500,14,1.15],num:['Campagne numérique',1500,14,1.3],promo:['Promotion',300,7,1.1]};
+const p3=()=>G.p3||(G.p3={dem:{},sup:1,cw:{},log:[],offer:null});
+const applySup=()=>Object.keys(ITEMS).forEach(i=>ITEMS[i][1]=Math.round(ITEMS0[i][1]*p3().sup));
+const buyCost=b=>{const o=p3().offer;return Math.round(b.price*1.05*(o&&o.id===b.id?.75:1))};
+const rivals=id=>{const b=buildings[id],k=G.biz[id].s;return buildings.filter(o=>o.state==='occupied'&&!o.shop&&o.cs===k&&Math.hypot(o.x-b.x,o.z-b.z)<45).length};
+function bizMult(id,z){z.rep=z.rep??50;return(p3().dem[z.s]||1)*(.7+.6*z.rep/100)*(z.mk&&z.mk.d>0?z.mk.m:1)*(1+.07*(z.train||0))*(z.loy?1.08:1)/(1+.07*rivals(id))}
+// journal des notifications
+const _toast=toast;toast=function(t){try{const P=p3();P.log.unshift(`Jour ${G.day} — ${t}`);P.log.length=Math.min(P.log.length,25)}catch(e){}_toast(t)};
+// concurrents persistants
+const _apply=apply;apply=function(){_apply();const P=p3();buildings.forEach(b=>{
+ if(b.cs===undefined)b.cs=b.type==='bureau'?'bur':b.type==='commerce'?SK[b.id%5]:null;
+ const o=P.cw[b.id];if(o&&!G.owned.includes(b.id)&&!G.leased.includes(b.id)){b.state=o.s;b.owner=o.s==='occupied'?'Entreprise concurrente':'Aucun';if(o.c!==undefined)b.cs=o.c}
+ b.flash=!!(P.offer&&P.offer.id===b.id&&b.state==='sale')})};
+const _start=start;start=function(){applySup();_start()};
+// événements quotidiens
+function p3Day(){const P=p3();let ch=false;
+ Object.keys(SECT).forEach(k=>{const d=P.dem[k]||1;P.dem[k]=Math.max(.75,Math.min(1.3,d+(1-d)*.03+(Math.random()-.5)*.03))});
+ Object.values(G.biz).forEach(z=>{z.rep=z.rep??50;if(z.mk&&z.mk.d>0)z.mk.d--;
+  if(z.open){const bad=z.stock<=0||z.staff<SECT[z.s].staff;z.rep=Math.max(0,Math.min(100,z.rep+(bad?-.6:.25+.1*(z.train||0)+(z.q>1?.1:0)+(z.loy?.1:0))));
+   if(z.layout.length&&Math.random()<.012){const p=z.layout.splice(Math.floor(Math.random()*z.layout.length),1)[0];(z.broken=z.broken||[]).push(p.id);toast(`🔧 Panne : ${ITEMS[p.id][0]} (${z.name})`)}}
+  z.orders.forEach(o=>{if(!o.dl&&o.due>G.day&&Math.random()<.12){o.dl=1;o.due+=2;toast('🚚 Retard de livraison : '+ITEMS[o.i][0])}})});
+ if(P.offer&&(P.offer.until<G.day||buildings[P.offer.id].state!=='sale')){P.offer=null;ch=true}
+ if(!P.offer&&Math.random()<.04){const s=buildings.filter(b=>b.state==='sale');if(s.length){const b=s[Math.floor(Math.random()*s.length)];P.offer={id:b.id,until:G.day+7};toast('💎 Offre flash −25 % : '+b.name+' (7 jours, toit rose)');ch=true}}
+ if(ch){apply();paint()}}
+// évolution mensuelle de la ville
+function p3Month(){const P=p3(),sale=buildings.filter(b=>b.state==='sale'&&!(P.offer&&P.offer.id===b.id)),occ=buildings.filter(b=>b.state==='occupied'&&!b.shop);let o=0,c=0;
+ for(let k=0;k<3&&sale.length;k++){const b=sale.splice(Math.floor(Math.random()*sale.length),1)[0];P.cw[b.id]={s:'occupied',c:b.type==='bureau'?'bur':b.type==='commerce'?SK[Math.floor(Math.random()*5)]:null};o++}
+ for(let k=0;k<2&&occ.length;k++){const b=occ.splice(Math.floor(Math.random()*occ.length),1)[0];P.cw[b.id]={s:'rent'};c++}
+ const old=P.sup;P.sup=Math.max(.8,Math.min(1.3,P.sup*(.93+Math.random()*.14)));applySup();
+ toast(`🏙️ Concurrence : ${o} ouverture(s), ${c} fermeture(s). Prix fournisseurs ${P.sup>old?'en hausse':'en baisse'} (${Math.round(P.sup*100)} %)`);apply();paint()}
+// actions entreprise
+function campaign(id,k){const z=G.biz[id],c=CAMP[k];if(G.money<c[1])return toast('Trésorerie insuffisante');if(z.mk&&z.mk.d>0)return toast('Une campagne est déjà en cours');G.money-=c[1];z.mk={d:c[2],m:c[3]};save();hud();bizModal(id)}
+function loyalty(id){if(G.money<800)return toast('Trésorerie insuffisante');G.money-=800;G.biz[id].loy=1;save();hud();bizModal(id)}
+function trainStaff(id){const z=G.biz[id];if(G.money<1200||(z.train||0)>=3)return toast('Impossible');G.money-=1200;z.train=(z.train||0)+1;save();hud();bizModal(id)}
+function repair(id,i){const z=G.biz[id],x=z.broken[i],c=Math.round(ITEMS[x][1]*.2);if(G.money<c)return toast('Trésorerie insuffisante');G.money-=c;z.broken.splice(i,1);z.inv[x]=(z.inv[x]||0)+1;save();hud();toast('Réparé : '+ITEMS[x][0]+' (à replacer via Aménager)');bizModal(id)}
+const _bm=bizModal;bizModal=function(id){_bm(id);const z=G.biz[id];z.rep=z.rep??50;const d=p3().dem[z.s]||1;
+ $('mbox').insertAdjacentHTML('beforeend',`<hr style="border-color:#2c3550"><b>📈 Marché et réputation</b>
+ <table><tr><td>Réputation</td><td>${Math.round(z.rep)}/100</td></tr><tr><td>Demande du secteur</td><td>${Math.round(d*100)} %</td></tr><tr><td>Concurrents à proximité</td><td>${rivals(id)}</td></tr>
+ <tr><td>Campagne</td><td>${z.mk&&z.mk.d>0?z.mk.d+' j (×'+z.mk.m+')':'aucune'}</td></tr><tr><td>Formation du personnel</td><td>${z.train||0}/3 (+150 €/employé/mois par niveau)</td></tr></table>
+ <div class="row">${Object.entries(CAMP).map(([k,c])=>`<button class="sec" onclick="campaign(${id},'${k}')">${c[0]} (${fmt(c[1])})</button>`).join('')}
+ <button class="sec" ${z.loy?'disabled':''} onclick="loyalty(${id})">🎁 Fidélisation (800 €)</button><button class="sec" ${(z.train||0)>=3?'disabled':''} onclick="trainStaff(${id})">🎓 Formation (1 200 €)</button></div>
+ ${(z.broken||[]).map((x,i)=>`<div style="margin-top:6px">🔧 ${ITEMS[x][0]} en panne <button onclick="repair(${id},${i})">Réparer (${fmt(ITEMS[x][1]*.2)})</button></div>`).join('')}`)};
+// écran Marché
+function openMarket(){const P=p3();modal(`<h2>📊 Marché</h2><table>${Object.entries(SECT).map(([k,s])=>{const d=P.dem[k]||1;return`<tr><td>${s.n}</td><td>${d>=1?'🔼':'🔽'} ${Math.round(d*100)} %</td><td>${buildings.filter(b=>b.state==='occupied'&&!b.shop&&b.cs===k).length} concurrents</td></tr>`}).join('')}</table>
+ <div>Prix fournisseurs : <b>${Math.round(P.sup*100)} %</b>${P.offer?`<br>💎 Offre flash : ${buildings[P.offer.id].name} (−25 %, jusqu'au jour ${P.offer.until})`:''}</div>
+ <b>Journal</b><div style="max-height:220px;overflow:auto;font-size:13px">${P.log.map(l=>`<div>${l}</div>`).join('')||'Rien à signaler.'}</div><div class="row"><button class="sec" onclick="closeModal()">Fermer</button></div>`)}
+document.querySelector('#top .sp').insertAdjacentHTML('afterend','<button class="sec" onclick="openMarket()">📊 Marché</button>');
+
+</script>
+<script>
+// ===== Phase 4 =====
+// ===== Empire Ambitions — Phase 4 : secteurs, logistique, holding, banque, expansion =====
+Object.assign(ITEMS,{cuisine:['Cuisine professionnelle',2200,3,2],comptoir:['Comptoir',400,3,1],rayon:['Rayonnage',250,3,1],congelo:['Congélateur',900,2,1],vtech:['Vitrine électronique',700,3,1],presentoir:['Présentoir meubles',500,3,2],etabli:['Établi',450,3,1],outils:['Caisse à outils',180,1,1],lit:["Lit d'hôtel",700,2,2],reception:['Réception',600,3,1],palette:['Rack à palettes',800,3,2],transpal:['Transpalette',500,1,1],machine:['Machine industrielle',9000,3,2],convoyeur:['Convoyeur',2500,3,1]});
+Object.keys(ITEMS).forEach(k=>{if(!ITEMS0[k])ITEMS0[k]=ITEMS[k].slice()});
+Object.assign(SECT,{
+ trad:{n:'Restaurant traditionnel',t:['commerce'],minA:110,fee:900,stock:1800,sign:900,staff:5,rev:700,req:{cuisine:1,frigo:2,caisse:1,table:5,chaise:10},opt:{eclairage:2,poubelle:2}},
+ epic:{n:'Épicerie et supermarché',t:['commerce'],minA:120,fee:800,stock:4000,sign:700,staff:4,rev:650,req:{rayon:4,congelo:2,caisse:2},opt:{poubelle:1,eclairage:2}},
+ elec:{n:"Magasin d'électronique",t:['commerce'],minA:80,fee:700,stock:5000,sign:700,staff:3,rev:560,req:{vtech:2,rayon:2,caisse:1},opt:{eclairage:2}},
+ meub:{n:'Magasin de meubles',t:['commerce','entrepot'],minA:140,fee:700,stock:3500,sign:700,staff:3,rev:520,req:{presentoir:4,comptoir:1,caisse:1},opt:{eclairage:2}},
+ repar:{n:'Atelier de réparation',t:['commerce','entrepot'],minA:60,fee:500,stock:700,sign:400,staff:2,rev:340,req:{etabli:2,outils:2,caisse:1},opt:{etagere:1,poubelle:1}},
+ hotel:{n:'Hôtellerie',t:['commerce','bureau'],minA:300,fee:2000,stock:1500,sign:1500,staff:6,rev:1100,req:{lit:6,reception:1,caisse:1},opt:{eclairage:2,chaise:4}},
+ entrep:{n:'Entrepôt et distribution',t:['entrepot'],minA:200,fee:900,stock:500,sign:300,staff:3,rev:380,req:{palette:3,transpal:1,caisse:1},opt:{etagere:2}},
+ gros:{n:'Commerce de gros / import-export',t:['entrepot'],minA:250,fee:1500,stock:6000,sign:500,staff:4,rev:950,req:{palette:4,transpal:2,caisse:1,poste:1,ordi:1},opt:{etagere:2}},
+ indus:{n:'Production industrielle',t:['entrepot'],minA:400,fee:3000,stock:8000,sign:800,staff:6,rev:1700,req:{machine:2,convoyeur:2,transpal:1,caisse:1},opt:{etagere:2}}});
+const _w1=wiz1;wiz1=function(){_w1();if(!p4().hold)document.querySelectorAll('#mbox button').forEach(b=>{if((b.getAttribute('onclick')||'').includes("W.s='indus'")){b.disabled=true;b.textContent='Nécessite une holding'}})};
+// ---- état
+const p4=()=>G.p4||(G.p4={veh:[],hold:null,loans:[],cities:[]});
+const VEH={van:['Camionnette',8000,300,2000],truck:['Camion',25000,800,6000]},LOANS=[[20000,12,.04],[50000,36,.055],[100000,60,.07]],CITIES=[['Lyon',60000],['Marseille',90000],['Bordeaux',120000]];
+function hasVeh(){return p4().veh.length>0}
+function fastDel(){return hasVeh()}
+function feeOf(p){return hasVeh()?0:Math.max(20,Math.round(p*.04))}
+const vcap=()=>Math.max(0,...p4().veh.map(v=>VEH[v][3]));
+const netW=()=>{const P=p4();return G.money+buildings.filter(b=>G.owned.includes(b.id)).reduce((a,b)=>a+valueOf(b),0)-G.debt-P.loans.reduce((a,l)=>a+l.p,0)+(P.hold?P.hold.cash:0)};
+const _hud=hud;hud=function(){_hud();$('wealth').textContent=fmt(netW())};
+const _proj=proj;proj=function(){const p=_proj(),P=p4();P.veh.forEach(v=>p.exp+=VEH[v][2]+1900);P.loans.forEach(l=>p.exp+=l.pay);return p};
+const _p3d=p3Day;p3Day=function(){_p3d();Object.values(G.biz).forEach(z=>{if(z.open)z.revM=(z.revM||0)+z.rev})};
+const _month=month;month=function(){const P=p4();let tax=0,roy=P.cities.length*2500;
+ Object.values(G.biz).forEach(z=>{tax+=Math.round((z.revM||0)*(z.sub?.08:.15));z.revM=0;roy+=(z.fr||0)*400});
+ _month();G.money+=roy-tax;const h=G.hist[G.hist.length-1];if(h){h.inc+=roy;h.exp+=tax}
+ P.loans.forEach(l=>{l.p=Math.max(0,l.p-(l.pay-l.p*l.r/12));l.left--});P.loans=P.loans.filter(l=>l.left>0&&l.p>1);
+ if(tax||roy)toast(`🧾 Impôts : −${fmt(tax)} · Redevances et expansion : +${fmt(roy)}`);save();hud()};
+// ---- hub
+document.querySelector('#top .sp').insertAdjacentHTML('afterend','<button class="sec" onclick="hub()">🏢 Groupe</button>');
+function hub(){const P=p4();modal(`<h2>🏢 Groupe</h2><p>Holding : ${P.hold?P.hold.name:'non créée'} · Véhicules : ${P.veh.length} · Prêts : ${P.loans.length} · Villes : ${P.cities.length}</p><div class="row" style="flex-direction:column"><button onclick="holdModal()">🏛️ Holding et filiales</button><button onclick="logiModal()">🚚 Logistique et entrepôts</button><button onclick="bankModal()">🏦 Banque</button><button onclick="expModal()">🌍 Expansion</button><button class="sec" onclick="closeModal()">Fermer</button></div>`)}
+// ---- holding
+function holdModal(){const P=p4(),ids=Object.keys(G.biz);
+ if(!P.hold)return modal(`<h2>🏛️ Holding</h2><p>Création : ${fmt(15000)}. Impôt réduit à 8 % (au lieu de 15 %) sur les filiales, résultats consolidés, accès à la production industrielle et à l'expansion.</p><div class="row"><button ${G.money<15000||!ids.length?'disabled':''} onclick="mkHold()">Créer la holding</button><button class="sec" onclick="hub()">Retour</button></div>`);
+ let ca=0,st=0,em=0;ids.forEach(i=>{const z=G.biz[i];ca+=z.open?z.rev:0;st+=z.stock;em+=z.staff});
+ modal(`<h2>🏛️ ${P.hold.name}</h2><table><tr><td>Filiales</td><td>${ids.filter(i=>G.biz[i].sub).length}/${ids.length}</td></tr><tr><td>CA consolidé (jour)</td><td>${fmt(ca)}</td></tr><tr><td>Stocks</td><td>${fmt(st)}</td></tr><tr><td>Employés</td><td>${em}</td></tr><tr><td>Trésorerie holding</td><td>${fmt(P.hold.cash)}</td></tr></table>
+ ${ids.map(i=>`<div style="margin:4px 0">${G.biz[i].name} <button class="${G.biz[i].sub?'grn':'sec'}" onclick="toggleSub(${i})">${G.biz[i].sub?'Filiale ✔':'Rattacher (1 000 €)'}</button></div>`).join('')}
+ <div class="row"><button class="sec" onclick="capTx(10000)">➡ Apporter 10 000 €</button><button class="sec" onclick="capTx(-10000)">⬅ Dividendes 10 000 €</button><button class="sec" onclick="hub()">Retour</button></div>`)}
+function mkHold(){if(G.money<15000)return;G.money-=15000;p4().hold={name:'Groupe '+clean(Object.values(G.biz)[0].name).slice(0,18),cash:0};save();hud();holdModal()}
+function toggleSub(i){const z=G.biz[i];if(!z.sub){if(G.money<1000)return toast('Trésorerie insuffisante');G.money-=1000;z.sub=1}else z.sub=0;save();hud();holdModal()}
+function capTx(a){const h=p4().hold;if(a>0?G.money<a:h.cash<-a)return toast('Fonds insuffisants');G.money-=a;h.cash+=a;save();hud();holdModal()}
+// ---- logistique
+let T={s:null,d:null};
+function logiModal(){const P=p4(),ids=Object.keys(G.biz).map(Number);if(!ids.includes(T.s))T.s=ids[0];if(!ids.includes(T.d))T.d=ids[1]??ids[0];
+ const o=sv=>ids.map(i=>`<option value="${i}" ${i===sv?'selected':''}>${G.biz[i].name}</option>`).join('');
+ modal(`<h2>🚚 Logistique</h2><small>Avec un véhicule : livraisons gratuites en 1 jour et transferts de stock. Chaque véhicule coûte son entretien + un chauffeur (1 900 €/mois).</small>
+ <table>${P.veh.map((v,i)=>`<tr><td>${VEH[v][0]} (capacité ${fmt(VEH[v][3])})</td><td>${fmt(VEH[v][2]+1900)}/mois</td><td><button class="red" onclick="sellVeh(${i})">Vendre</button></td></tr>`).join('')||'<tr><td>Aucun véhicule</td></tr>'}</table>
+ <div class="row">${Object.entries(VEH).map(([k,v])=>`<button ${G.money<v[1]?'disabled':''} onclick="buyVeh('${k}')">${v[0]} (${fmt(v[1])})</button>`).join('')}</div><hr style="border-color:#2c3550">
+ <b>Transfert de stock</b> (carburant 40 €)<div style="margin:6px 0">De <select onchange="T.s=+this.value">${o(T.s)}</select> vers <select onchange="T.d=+this.value">${o(T.d)}</select></div>
+ <div class="row">${[1000,2000,5000].map(a=>`<button class="sec" onclick="transfer(${a})">${fmt(a)}</button>`).join('')}<button class="grn" onclick="bulk()">📦 Achat en gros entrepôt : +5 000 € de stock pour 4 250 €</button></div>
+ <div class="row"><button class="sec" onclick="hub()">Retour</button></div>`)}
+function buyVeh(k){if(G.money<VEH[k][1])return;G.money-=VEH[k][1];p4().veh.push(k);save();hud();logiModal()}
+function sellVeh(i){const P=p4();G.money+=Math.round(VEH[P.veh[i]][1]*.7);P.veh.splice(i,1);save();hud();logiModal()}
+function transfer(a){const s=G.biz[T.s],d=G.biz[T.d];if(!s||!d||T.s===T.d)return toast('Choisissez deux établissements différents');if(!hasVeh())return toast('Il faut un véhicule');
+ if(a>vcap())return toast('Capacité du véhicule dépassée');if(s.stock<a||G.money<40)return toast('Stock ou trésorerie insuffisant');s.stock-=a;d.stock+=a;G.money-=40;save();hud();toast(`Transfert de ${fmt(a)} effectué`)}
+function bulk(){const w=Object.values(G.biz).find(z=>z.s==='entrep'&&z.open);if(!w)return toast("Il faut un entrepôt ouvert (secteur « Entrepôt et distribution »)");if(G.money<4250)return toast('Trésorerie insuffisante');G.money-=4250;w.stock+=5000;save();hud();toast('Stock acheté en gros dans '+w.name)}
+// ---- banque
+function bankModal(){const P=p4();modal(`<h2>🏦 Banque</h2><table>${P.loans.map(l=>`<tr><td>Capital restant ${fmt(l.p)}</td><td>${l.left} mois</td><td>${fmt(l.pay)}/mois (${(l.r*100).toFixed(1)} %)</td></tr>`).join('')||'<tr><td>Aucun prêt en cours</td></tr>'}</table>
+ <small>Prêt accordé si votre patrimoine net couvre 40 % du montant (plafond 200 000 € d'encours).</small><div class="row">${LOANS.map(([a,n,r],i)=>`<button onclick="takeLoan(${i})">${fmt(a)} · ${n} mois · ${(r*100).toFixed(1)} %</button>`).join('')}<button class="sec" onclick="hub()">Retour</button></div>`)}
+function takeLoan(i){const[a,n,r]=LOANS[i],P=p4();if(netW()<a*.4)return toast('Patrimoine insuffisant pour ce prêt');if(P.loans.reduce((s,l)=>s+l.p,0)+a>200000)return toast("Plafond d'encours atteint");
+ const m=r/12;P.loans.push({p:a,r,left:n,pay:Math.round(a*m/(1-Math.pow(1+m,-n)))});G.money+=a;save();hud();bankModal()}
+// ---- expansion
+function expModal(){const P=p4();modal(`<h2>🌍 Expansion</h2><small>Implantation simplifiée dans une autre ville (non modélisée en 3D) : un réseau régional rapporte 2 500 €/mois. Holding requise.</small>
+ ${CITIES.map(([n,c])=>{const have=P.cities.includes(n);return`<div style="margin:6px 0">${n} — ${fmt(c)} <button ${have||G.money<c||!P.hold?'disabled':''} onclick="openCity('${n}',${c})">${have?'Implanté ✔':P.hold?'Ouvrir':'Holding requise'}</button></div>`}).join('')}<div class="row"><button class="sec" onclick="hub()">Retour</button></div>`)}
+function openCity(n,c){if(G.money<c)return;G.money-=c;p4().cities.push(n);save();hud();toast('🌍 Implantation à '+n);expModal()}
+// ---- rachat de concurrents
+const _show=show;show=function(){_show();const b=sel;if(b&&b.state==='occupied'&&b.cs&&!b.shop){const c=Math.round(b.price*1.3);$('panel').insertAdjacentHTML('beforeend',`<button class="grn" ${G.money<c?'disabled':''} onclick="acquire(${b.id})">🤝 Racheter l'entreprise concurrente (${fmt(c)})</button>`)}};
+function setupBiz(b,s,q,rep){const z={s:Object.keys(SECT).find(k=>SECT[k]===s),name:clean(s.n+' '+b.address.split(' ').slice(1).join(' ')).slice(0,30),q,open:false,staff:s.staff,stock:Math.round(s.stock*q),inv:{},layout:[],orders:[],rev:0,rep};
+ const g=gridOf(b);Object.entries({...s.req,...s.opt}).forEach(([i,n])=>{for(let k=0;k<n;k++)if(!autoFit(z,g,i))z.inv[i]=(z.inv[i]||0)+1});G.biz[b.id]=z;z.open=reqs(b.id).every(x=>x.ok);return z}
+function acquire(id){const b=buildings[id],c=Math.round(b.price*1.3),s=SECT[b.cs];if(G.money<c||!s)return;G.money-=c;G.owned.push(id);delete p3().cw[id];
+ const z=setupBiz(b,s,1,55);apply();save();paint();sel=b;show();toast('🤝 Entreprise rachetée : '+z.name+(z.open?'':' (à aménager avant ouverture)'))}
+// ---- succursales et franchises
+const brCost=z=>{const s=SECT[z.s];return Math.round((s.fee+s.sign*z.q+s.stock*z.q+pkg(s)*.85)*.8)};
+const _bm4=bizModal;bizModal=function(id){_bm4(id);const z=G.biz[id],s=SECT[z.s],free=buildings.filter(b=>(G.owned.includes(b.id)||G.leased.includes(b.id))&&!G.biz[b.id]&&s.t.includes(b.type)&&b.area>=s.minA);
+ $('mbox').insertAdjacentHTML('beforeend',`<hr style="border-color:#2c3550"><b>🌐 Réseau</b><div style="margin:6px 0">Franchises vendues : ${z.fr||0}/3 (+400 €/mois chacune, réputation ≥ 60 requise)</div>
+ <div class="row"><button class="sec" ${(z.fr||0)>=3||z.rep<60?'disabled':''} onclick="sellFr(${id})">Vendre une franchise (+8 000 €)</button>
+ ${free.slice(0,4).map(b=>`<button class="sec" ${G.money<brCost(z)?'disabled':''} onclick="branch(${id},${b.id})">Succursale : ${b.address} (${fmt(brCost(z))})</button>`).join('')||'<small>Aucun local libre adapté pour une succursale.</small>'}</div>`)};
+function sellFr(id){const z=G.biz[id];if((z.fr||0)>=3||z.rep<60)return;z.fr=(z.fr||0)+1;G.money+=8000;save();hud();toast('Franchise vendue !');bizModal(id)}
+function branch(src,dst){const z=G.biz[src],c=brCost(z);if(G.money<c)return;G.money-=c;const n=setupBiz(buildings[dst],SECT[z.s],z.q,Math.round(z.rep*.7));n.name=clean(z.name).slice(0,22)+' II';
+ save();hud();toast('Succursale créée : '+n.name+(n.open?' (ouverte)':' (à aménager)'));bizModal(dst)}
+
+</script>
+<script>
+// ===== Empire Ambitions — Phase 5 : refonte de la carte, inventaire, fournitures =====
+ren.toneMapping=THREE.ACESFilmicToneMapping;ren.toneMappingExposure=1.3;ren.shadowMap.type=THREE.PCFSoftShadowMap;
+cam.far=2500;cam.updateProjectionMatrix();sun.shadow.bias=-.0004;hemi.intensity=.8;scene.fog=new THREE.Fog(0xcfe3f2,230,640);
+const IM=THREE.InstancedMesh,DUM=new THREE.Object3D(),ZERO=new THREE.Matrix4().makeScale(0,0,0),FCV={},FT={},IS={};
+const cv=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c};
+const tex=(c,rx,ry)=>{const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(rx||1,ry||1);t.anisotropy=4;return t};
+const dcv=(w,h,f)=>{const c=cv(w,h);f(c.getContext('2d'));return tex(c)};
+const noiseCv=(base,n,al,s)=>{s=s||128;const c=cv(s,s),x=c.getContext('2d');x.fillStyle=base;x.fillRect(0,0,s,s);for(let i=0;i<n;i++){x.fillStyle=`rgba(${Math.random()<.5?0:255},${Math.random()<.5?0:255},${Math.random()<.5?0:255},${al})`;x.fillRect(Math.random()*s,Math.random()*s,2+Math.random()*3,2+Math.random()*3)}return c};
+// ---- ciel
+function skyCv(night){const c=cv(512,256),x=c.getContext('2d'),g=x.createLinearGradient(0,0,0,256);
+ if(night){g.addColorStop(0,'#02040c');g.addColorStop(.5,'#18305a');g.addColorStop(1,'#18305a')}else{g.addColorStop(0,'#2f6fc9');g.addColorStop(.4,'#7fb6e8');g.addColorStop(.5,'#dcedf8');g.addColorStop(1,'#dcedf8')}
+ x.fillStyle=g;x.fillRect(0,0,512,256);if(night)for(let i=0;i<260;i++){x.fillStyle=`rgba(255,255,255,${.3+Math.random()*.7})`;x.fillRect(Math.random()*512,Math.random()*120,1.5,1.5)}return new THREE.CanvasTexture(c)}
+const skyD=skyCv(0),skyN=skyCv(1),sky=new THREE.Mesh(new THREE.SphereGeometry(1100,32,16),new THREE.MeshBasicMaterial({map:skyD,side:THREE.BackSide,fog:false,toneMapped:false,depthWrite:false}));sky.renderOrder=-1;scene.add(sky);
+// ---- façades
+const PAL={commerce:[['#c9a27e','#efe6d8','#8a5a44'],['#b5654a','#e9dccb','#3c3c3c'],['#d9c9a3','#ffffff','#5a7d9a'],['#9c8f86','#e8e2da','#7a3b3b']],
+ logement:[['#e8dcc8','#ffffff','#6b8e9f'],['#f1e3b8','#ffffff','#8e5b3a'],['#d8c7d8','#ffffff','#4f6b8a'],['#cfd8c4','#ffffff','#7a6a4f']],
+ bureau:[['#6e8ea6','#c7d3dc','#0b2540'],['#5b7a8c','#cfd8de','#12303f'],['#7b8ea3','#d5dbe2','#10253a'],['#4d6d7d','#c3d0d6','#0f2c36']],
+ entrepot:[['#8f9a76','#d8d8cc','#55603f'],['#9aa2ab','#e0e3e6','#505860'],['#a58f78','#e3dacd','#6b5a45'],['#7f8f9a','#d6dde2','#46545f']]};
+function facadeCv(type,v){const k=type+v;if(FCV[k])return FCV[k];const c=cv(128,128),e=cv(128,128),x=c.getContext('2d'),y=e.getContext('2d'),p=PAL[type][v%4];
+ x.fillStyle=p[0];x.fillRect(0,0,128,128);y.fillStyle='#000';y.fillRect(0,0,128,128);
+ for(let i=0;i<260;i++){x.fillStyle=`rgba(${Math.random()<.5?0:255},${Math.random()<.5?0:255},${Math.random()<.5?0:255},.035)`;x.fillRect(Math.random()*128,Math.random()*128,4,2)}
+ const lit=()=>Math.random()<.6?(Math.random()<.5?'#ffd98a':'#fff1c9'):null;
+ const win=(px,py,w,h)=>{x.fillStyle=p[1];x.fillRect(px-3,py-3,w+6,h+6);const g=x.createLinearGradient(px,py,px+w,py+h);g.addColorStop(0,'#9fc4dd');g.addColorStop(1,'#35546e');x.fillStyle=g;x.fillRect(px,py,w,h);x.fillStyle='rgba(255,255,255,.4)';x.fillRect(px,py,w,3);x.fillStyle=p[1];x.fillRect(px+w/2-1,py,2,h);x.fillRect(px-5,py+h+3,w+10,4);const l=lit();if(l){y.fillStyle=l;y.fillRect(px,py,w,h)}};
+ if(type==='bureau'){for(let i=0;i<4;i++){const px=i*32,g=x.createLinearGradient(px,18,px+32,94);g.addColorStop(0,'#8fb8d4');g.addColorStop(1,'#1d3f5c');x.fillStyle=g;x.fillRect(px+2,16,28,80);x.fillStyle='rgba(255,255,255,.25)';x.fillRect(px+2,16,28,5);const l=lit();if(l){y.fillStyle=l;y.fillRect(px+2,16,28,80)}}x.fillStyle=p[1];x.fillRect(0,0,128,14);x.fillRect(0,96,128,32);for(let i=0;i<4;i++)x.fillRect(i*32,0,2,128)}
+ else if(type==='entrepot'){for(let i=0;i<128;i+=4){x.fillStyle=i%8?'rgba(0,0,0,.14)':'rgba(255,255,255,.1)';x.fillRect(i,0,2,128)}for(let i=0;i<6;i++){const px=8+i*20;x.fillStyle='#2b3a46';x.fillRect(px,16,14,12);x.fillStyle='rgba(255,255,255,.3)';x.fillRect(px,16,14,3);const l=lit();if(l){y.fillStyle=l;y.fillRect(px,16,14,12)}}}
+ else if(type==='logement'){win(16,22,32,50);win(80,22,32,50);x.fillStyle=p[2];[8,52,72,116].forEach(px=>x.fillRect(px,22,8,50));x.fillStyle=p[1];x.fillRect(4,96,120,4);for(let i=6;i<124;i+=8)x.fillRect(i,100,2,16)}
+ else{win(14,24,36,50);win(78,24,36,50);x.fillStyle=p[2];x.fillRect(0,0,128,10)}
+ x.fillStyle='rgba(0,0,0,.2)';x.fillRect(0,124,128,4);return FCV[k]=[c,e]}
+function facadeT(type,v,rx,ry){const k=type+v+'|'+rx+'|'+ry;if(!FT[k]){const[c,e]=facadeCv(type,v);FT[k]=[tex(c,rx,ry),tex(e,rx,ry)]}return FT[k]}
+const sfTex=dcv(256,128,x=>{x.fillStyle='#2b2d33';x.fillRect(0,0,256,128);const g=x.createLinearGradient(0,0,256,128);g.addColorStop(0,'#bfe3f5');g.addColorStop(1,'#4a7ea0');x.fillStyle=g;x.fillRect(8,8,170,112);x.fillStyle='rgba(255,255,255,.3)';x.beginPath();x.moveTo(30,8);x.lineTo(70,8);x.lineTo(30,120);x.lineTo(8,120);x.fill();x.fillStyle='#1c1d22';x.fillRect(188,8,60,120);x.fillStyle='#7fb7d6';x.fillRect(194,14,48,98);x.fillStyle='#ccc';x.fillRect(196,64,4,14)});
+const doorT=dcv(64,128,x=>{x.fillStyle='#4b3426';x.fillRect(0,0,64,128);x.fillStyle='#6b4b36';x.fillRect(6,6,52,116);x.fillStyle='#9fc4dd';x.fillRect(14,14,36,40);x.fillStyle='#d8b04a';x.fillRect(48,70,5,5)});
+const rollT=dcv(128,128,x=>{x.fillStyle='#8c949c';x.fillRect(0,0,128,128);for(let i=0;i<128;i+=8){x.fillStyle='rgba(0,0,0,.25)';x.fillRect(0,i,128,2)}x.fillStyle='#f2c230';x.fillRect(0,120,128,8)});
+const lobT=dcv(128,128,x=>{x.fillStyle='#1b2733';x.fillRect(0,0,128,128);const g=x.createLinearGradient(0,0,128,128);g.addColorStop(0,'#a8d4ee');g.addColorStop(1,'#2d5878');x.fillStyle=g;x.fillRect(6,6,56,116);x.fillRect(66,6,56,116);x.fillStyle='#ccc';x.fillRect(58,60,3,16);x.fillRect(67,60,3,16)});
+const SIGNS=[['BOUTIQUE','#8e3b8f'],['CAFÉ','#7a4a2a'],['BOULANGERIE','#b8742a'],['COIFFURE','#2a6f9e'],['PHARMACIE','#1e8a4c'],['FLEURISTE','#c2477a'],['LIBRAIRIE','#3c4d8a'],['RESTAURANT','#b02e2e']],AWN=[0xc0392b,0x2c7a4b,0x2a5db0,0xd98e04,0x7a3b8f];
+// ---- sets instanciés
+const BOX=()=>new THREE.BoxGeometry(1,1,1),PLN=()=>new THREE.PlaneGeometry(1,1);
+const SETDEF={par:[BOX,()=>new THREE.MeshLambertMaterial({color:0xa8a8a2}),1],ac:[BOX,()=>new THREE.MeshLambertMaterial({color:0xcfd3d6}),1],ant:[BOX,()=>new THREE.MeshLambertMaterial({color:0x555555}),1],
+ awn:[BOX,()=>new THREE.MeshLambertMaterial({color:0xffffff}),1],sf:[PLN,()=>new THREE.MeshLambertMaterial({map:sfTex})],door:[PLN,()=>new THREE.MeshLambertMaterial({map:doorT})],
+ roll:[PLN,()=>new THREE.MeshLambertMaterial({map:rollT})],lob:[PLN,()=>new THREE.MeshLambertMaterial({map:lobT})]};
+function signSet(s){const k='sign:'+s[0];if(!SETDEF[k])SETDEF[k]=[PLN,()=>new THREE.MeshLambertMaterial({map:dcv(256,64,x=>{x.fillStyle=s[1];x.fillRect(0,0,256,64);x.strokeStyle='#fff';x.lineWidth=4;x.strokeRect(4,4,248,56);x.fillStyle='#fff';x.font='bold 26px system-ui,sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText(s[0],128,34,230)})})];return k}
+function iadd(k,b,x,y,z,sx,sy,sz,ry,col){let s=IS[k];if(!s){const d=SETDEF[k],m=new IM(d[0](),d[1](),700);m.count=0;m.castShadow=!!d[2];scene.add(m);s=IS[k]={m,n:0}}
+ const o=DUM;o.position.set(x,y,z);o.rotation.set(0,ry||0,0);o.scale.set(sx,sy,sz);o.updateMatrix();s.m.setMatrixAt(s.n,o.matrix);
+ if(col!==undefined){s.m.setColorAt(s.n,new THREE.Color(col));s.m.instanceColor.needsUpdate=true}
+ (b.inst=b.inst||[]).push([s,s.n,o.matrix.clone()]);s.n++;s.m.count=s.n;s.m.instanceMatrix.needsUpdate=true}
+const PINGEO=new THREE.ConeGeometry(.9,1.8,6);PINGEO.rotateX(Math.PI);
+// ---- bâtiments
+function mk(b){const bx=Math.round(b.x/PITCH+(N-1)/2),bz=Math.round(b.z/PITCH+(N-1)/2),lx=b.x-(bx-(N-1)/2)*PITCH,lz=b.z-(bz-(N-1)/2)*PITCH;
+ let ry=0;if(lz>4)ry=0;else if(lz<-4)ry=Math.PI;else if(lx>4)ry=Math.PI/2;else if(lx<-4)ry=-Math.PI/2;
+ const zf=Math.abs(Math.sin(ry))<.5,fw=zf?b.w:b.d,off=(zf?b.d:b.w)/2,sx=Math.sin(ry),sz=Math.cos(ry),v=b.id%4,Y=.3;
+ const[ct,et]=facadeT(b.type,v,Math.max(1,Math.round(Math.max(b.w,b.d)/3.5)),b.floors);
+ const body=new THREE.Mesh(new THREE.BoxGeometry(b.w,b.h,b.d),new THREE.MeshLambertMaterial({map:ct,emissiveMap:et,emissive:0x000000,transparent:true}));
+ body.position.set(b.x,Y+b.h/2,b.z);body.castShadow=body.receiveShadow=true;body.userData.id=b.id;
+ const roof=new THREE.Mesh(new THREE.BoxGeometry(b.w-.3,.3,b.d-.3),new THREE.MeshLambertMaterial({transparent:true}));roof.position.set(b.x,Y+b.h+.5,b.z);roof.userData.id=b.id;
+ const pin=new THREE.Mesh(PINGEO,new THREE.MeshBasicMaterial({transparent:true,toneMapped:false}));pin.position.set(b.x,Y+b.h+3.5,b.z);pin.userData.id=b.id;
+ scene.add(body,roof,pin);b.body=body;b.roof=roof;b.pin=pin;meshes.push(body,roof,pin);
+ iadd('par',b,b.x,Y+b.h+.3,b.z,b.w+.5,.6,b.d+.5,0);iadd('ac',b,b.x+b.w*.2,Y+b.h+1,b.z-b.d*.2,1.2,.7,1,0);
+ if(b.floors>3)iadd('ant',b,b.x-b.w*.25,Y+b.h+2.2,b.z+b.d*.2,.12,3.4,.12,0);
+ const fx=b.x+sx*(off+.04),fz=b.z+sz*(off+.04),shop=b.shop,sg=shop==='supply'?['FOURNITURES','#e08a00']:shop?['MEUBLES & ÉQUIP.','#0e9d94']:SIGNS[b.id%SIGNS.length];
+ if(b.type==='commerce'||shop){iadd('sf',b,fx,Y+1.6,fz,fw*.82,3,1,ry);iadd('awn',b,b.x+sx*(off+.7),Y+3.3,b.z+sz*(off+.7),fw*.9,.2,1.5,ry,AWN[b.id%5]);
+  iadd(signSet(sg),b,b.x+sx*(off+.06),Y+Math.min(3.95,b.h-.5),b.z+sz*(off+.06),fw*.6,.8,1,ry)}
+ else if(b.type==='entrepot')iadd('roll',b,fx,Y+1.6,fz,Math.min(4.5,fw*.6),3.2,1,ry);
+ else if(b.type==='bureau')iadd('lob',b,fx,Y+1.4,fz,Math.min(4,fw*.7),2.8,1,ry);
+ else iadd('door',b,fx,Y+1.1,fz,1.2,2.2,1,ry)}
+// ---- sol, routes, décor
+const lampHead=new THREE.MeshLambertMaterial({color:0xfff2c8,emissive:0x000000});
+function roads(){const g=tex(noiseCv('#5a9650',900,.07),180,180),gr=new THREE.Mesh(new THREE.PlaneGeometry(1800,1800),new THREE.MeshLambertMaterial({map:g}));gr.rotation.x=-Math.PI/2;gr.position.y=-.05;gr.receiveShadow=true;scene.add(gr);
+ const as=new THREE.Mesh(new THREE.PlaneGeometry(EXT*2,EXT*2),new THREE.MeshLambertMaterial({map:tex(noiseCv('#34373c',700,.06),EXT/10,EXT/10)}));as.rotation.x=-Math.PI/2;as.position.y=.02;as.receiveShadow=true;scene.add(as);
+ const pc=noiseCv('#aaa8a2',200,.05,64),px=pc.getContext('2d');px.strokeStyle='rgba(0,0,0,.2)';px.strokeRect(0,0,64,64);px.beginPath();px.moveTo(32,0);px.lineTo(32,64);px.moveTo(0,32);px.lineTo(64,32);px.stroke();
+ const pm=new THREE.MeshLambertMaterial({map:tex(pc,6,6)}),cm=new THREE.MeshLambertMaterial({color:0xcfcfca}),S=BLK*LOT+1;
+ for(let bx=0;bx<N;bx++)for(let bz=0;bz<N;bz++){const cx=(bx-(N-1)/2)*PITCH,cz=(bz-(N-1)/2)*PITCH;
+  const cu=new THREE.Mesh(new THREE.BoxGeometry(S+1.2,.26,S+1.2),cm);cu.position.set(cx,.13,cz);cu.receiveShadow=true;const sw=new THREE.Mesh(new THREE.BoxGeometry(S,.3,S),pm);sw.position.set(cx,.15,cz);sw.receiveShadow=true;scene.add(cu,sw)}
+ const mk2=(geo,col,n)=>new IM(geo,new THREE.MeshBasicMaterial({color:col}),n),dash=[],zeb=[];
+ for(let k=0;k<=N;k++){const c=(k-N/2)*PITCH;for(let t=-EXT+4;t<EXT-3;t+=6){dash.push([t,c,0],[c,t,1])}
+  for(let k2=0;k2<=N;k2++){const c2=(k2-N/2)*PITCH;for(const s of[-2.2,-1.3,-.4,.5,1.4,2.3]){zeb.push([c+5,c2+s,0],[c-5,c2+s,0],[c2+s,c+5,1],[c2+s,c-5,1])}}}
+ const place=(m,arr,y)=>{arr.forEach((d,i)=>{DUM.position.set(d[0],y,d[1]);DUM.rotation.set(-Math.PI/2,0,d[2]?Math.PI/2:0);DUM.scale.set(1,1,1);DUM.updateMatrix();m.setMatrixAt(i,DUM.matrix)});scene.add(m)};
+ place(mk2(new THREE.PlaneGeometry(3,.22),0xe8d96a,dash.length),dash,.05);place(mk2(new THREE.PlaneGeometry(2.2,.5),0xf2f2f2,zeb.length),zeb,.055);
+ const lp=[];for(let bx=0;bx<N;bx++)for(let bz=0;bz<N;bz++){const cx=(bx-(N-1)/2)*PITCH,cz=(bz-(N-1)/2)*PITCH;for(const a of[-1,1])for(const b of[-1,1])lp.push([cx+a*13,cz+b*13])}
+ const pol=new IM(new THREE.CylinderGeometry(.07,.1,4.6,6),new THREE.MeshLambertMaterial({color:0x2b2f36}),lp.length),hd=new IM(new THREE.SphereGeometry(.3,8,6),lampHead,lp.length);
+ lp.forEach((p,i)=>{DUM.rotation.set(0,0,0);DUM.scale.set(1,1,1);DUM.position.set(p[0],2.6,p[1]);DUM.updateMatrix();pol.setMatrixAt(i,DUM.matrix);DUM.position.y=5;DUM.updateMatrix();hd.setMatrixAt(i,DUM.matrix)});pol.castShadow=true;scene.add(pol,hd)}
+function trees(){const pos=[];for(let bx=0;bx<N;bx++)for(let bz=0;bz<N;bz++){const cx=(bx-(N-1)/2)*PITCH,cz=(bz-(N-1)/2)*PITCH;for(const o of[-8,0,8])pos.push([cx+12.3,cz+o],[cx-12.3,cz+o],[cx+o,cz+12.3],[cx+o,cz-12.3])}
+ const tr=new IM(new THREE.CylinderGeometry(.15,.22,1.6,6),new THREE.MeshLambertMaterial({color:0x6b4a2b}),pos.length),cr=new IM(new THREE.IcosahedronGeometry(1,1),new THREE.MeshLambertMaterial({color:0xffffff}),pos.length),G4=[0x3e8e41,0x4fa34a,0x2f7a3a,0x6aa84f];
+ pos.forEach((p,i)=>{const s=.85+((i*7)%6)/10;DUM.rotation.set(0,i,0);DUM.scale.set(1,1,1);DUM.position.set(p[0],1.1,p[1]);DUM.updateMatrix();tr.setMatrixAt(i,DUM.matrix);DUM.scale.set(s,s*1.1,s);DUM.position.y=2.6;DUM.updateMatrix();cr.setMatrixAt(i,DUM.matrix);cr.setColorAt(i,new THREE.Color(G4[i%4]))});tr.castShadow=cr.castShadow=true;scene.add(tr,cr);
+ const nf=420,fo=new IM(new THREE.ConeGeometry(2.4,8,6),new THREE.MeshLambertMaterial({color:0xffffff}),nf);
+ for(let i=0;i<nf;i++){const a=Math.random()*6.283,r=130+Math.random()*210,s=.8+Math.random()*1.1;DUM.rotation.set(0,0,0);DUM.scale.set(s,s,s);DUM.position.set(Math.cos(a)*r,3.8*s,Math.sin(a)*r);DUM.updateMatrix();fo.setMatrixAt(i,DUM.matrix);fo.setColorAt(i,new THREE.Color().setHSL(.33,.45,.14+Math.random()*.1))}scene.add(fo);
+ const mo=new IM(new THREE.ConeGeometry(1,1,7),new THREE.MeshLambertMaterial({color:0xffffff}),30);
+ for(let i=0;i<30;i++){const a=i/30*6.283,r=470+Math.random()*50,h=90+Math.random()*90,w=70+Math.random()*50;DUM.rotation.set(0,Math.random()*3,0);DUM.scale.set(w,h,w);DUM.position.set(Math.cos(a)*r,h/2-6,Math.sin(a)*r);DUM.updateMatrix();mo.setMatrixAt(i,DUM.matrix);mo.setColorAt(i,new THREE.Color().setHSL(.3+Math.random()*.1,.12,.32+Math.random()*.12))}scene.add(mo)}
+// ---- vie : voitures, piétons, nuages
+const CAR=[],PED=[],CLD=[],HP=12.1,PER=8*HP;let carB,carC,pedB,pedH,cloudM;
+function mkCars(){const n=58,cols=[0xd33,0x39f,0xeeeeee,0x333,0xfc3,0x2a6,0x888];carB=new IM(new THREE.BoxGeometry(2.5,.7,1.2),new THREE.MeshLambertMaterial({color:0xffffff}),n);carC=new IM(new THREE.BoxGeometry(1.3,.55,1.05),new THREE.MeshLambertMaterial({color:0x2a3a4a}),n);
+ for(let i=0;i<n;i++){const bus=i%14===0;CAR.push({ax:i%4<2?0:1,c:(Math.floor(Math.random()*(N+1))-N/2)*PITCH,s:i%2?1:-1,p:(Math.random()*2-1)*EXT,v:bus?.1:.12+Math.random()*.12,k:bus?1:0});carB.setColorAt(i,new THREE.Color(bus?0xf2b705:cols[i%7]))}carB.castShadow=carC.castShadow=true;scene.add(carB,carC);
+ const np=90;pedB=new IM(new THREE.CylinderGeometry(.22,.26,.95,6),new THREE.MeshLambertMaterial({color:0xffffff}),np);pedH=new IM(new THREE.SphereGeometry(.19,6,5),new THREE.MeshLambertMaterial({color:0xe0b894}),np);
+ for(let i=0;i<np;i++){PED.push({bx:Math.floor(Math.random()*N),bz:Math.floor(Math.random()*N),t:Math.random()*PER,d:i%2?1:-1,v:.012+Math.random()*.014});pedB.setColorAt(i,new THREE.Color().setHSL(Math.random(),.55,.5))}scene.add(pedB,pedH);
+ cloudM=new IM(new THREE.SphereGeometry(1,8,6),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.85,fog:false,toneMapped:false}),18);
+ for(let i=0;i<18;i++)CLD.push({x:(Math.random()*2-1)*420,y:110+Math.random()*60,z:(Math.random()*2-1)*420,sx:18+Math.random()*16,sz:10+Math.random()*8});scene.add(cloudM)}
+function perPos(t){const u=t%(2*HP)-HP;switch(Math.floor(t/(2*HP))%4){case 0:return[u,-HP];case 1:return[HP,u];case 2:return[-u,HP];default:return[-HP,-u]}}
+function moveCars(dt){const t=performance.now()/1000,f=(inGame&&uiPause)?0:Math.max(inGame?speed:1,.3),o=DUM;
+ if(carB){CAR.forEach((c,i)=>{c.p+=c.s*c.v*dt*60*f;if(c.p>EXT)c.p=-EXT;if(c.p<-EXT)c.p=EXT;const l=c.s*1.7,bus=c.k;
+  o.position.set(c.ax?c.c+l:c.p,bus?.9:.4,c.ax?c.p:c.c-l);o.rotation.set(0,c.ax?Math.PI/2:0,0);o.scale.set(bus?2.2:1,bus?2.3:1,bus?1.05:1);o.updateMatrix();carB.setMatrixAt(i,o.matrix);
+  o.position.y=1.02;o.scale.set(bus?0:1,1,1);o.updateMatrix();carC.setMatrixAt(i,o.matrix)});carB.instanceMatrix.needsUpdate=carC.instanceMatrix.needsUpdate=true}
+ if(pedB){PED.forEach((q,i)=>{q.t=(q.t+q.d*q.v*dt*60*f+PER)%PER;const p=perPos(q.t),bob=f?Math.abs(Math.sin(t*6+i))*.06:0,x=(q.bx-(N-1)/2)*PITCH+p[0],z=(q.bz-(N-1)/2)*PITCH+p[1];
+  o.rotation.set(0,0,0);o.scale.set(1,1,1);o.position.set(x,.3+.5+bob,z);o.updateMatrix();pedB.setMatrixAt(i,o.matrix);o.position.y=.3+1.17+bob;o.updateMatrix();pedH.setMatrixAt(i,o.matrix)});pedB.instanceMatrix.needsUpdate=pedH.instanceMatrix.needsUpdate=true}
+ if(cloudM){CLD.forEach((c,i)=>{c.x+=.05*dt*60;if(c.x>440)c.x=-440;o.rotation.set(0,0,0);o.position.set(c.x,c.y,c.z);o.scale.set(c.sx,6,c.sz);o.updateMatrix();cloudM.setMatrixAt(i,o.matrix)});cloudM.instanceMatrix.needsUpdate=true}
+ buildings.forEach(b=>{if(b.pin&&b.pin.visible){b.pin.position.y=.3+b.h+3.6+Math.sin(t*2+b.id)*.35;b.pin.rotation.y=t}})}
+// ---- peinture : épingles, détails, filtres, magasins
+const _paint=paint;paint=function(){_paint();buildings.forEach(b=>{if(!b.pin)return;const show=b.body.material.opacity>.5,sup=b.shop==='supply';
+ if(sup)b.roof.material.color.set('#ffb703');
+ b.pin.visible=show&&!!(b.shop||b.flash||['sale','rent','owned','sublet','leased'].includes(b.state));b.pin.material.color.set(sup?'#ffb703':b.shop?'#1fd1c4':b.flash?'#ff4fd8':STATUS[b.state][1]);
+ if(b._v!==show){b._v=show;(b.inst||[]).forEach(([s,i,m])=>{s.m.setMatrixAt(i,show?m:ZERO);s.m.instanceMatrix.needsUpdate=true})}})};
+const _tn=toggleNight;toggleNight=function(){_tn();sky.material.map=night?skyN:skyD;sky.material.needsUpdate=true;scene.fog.color.set(night?0x142038:0xcfe3f2);scene.background.set(night?0x050a1a:0x9ec9e8);hemi.intensity=night?.4:.8;
+ buildings.forEach(b=>{if(b.body)b.body.material.emissive.setScalar(night?1:0)});lampHead.emissive.set(night?0xffd27a:0x000000)};
+// ===== INVENTAIRE ET FOURNITURES =====
+const SUP={burger:['Burgers surgelés','carton de 30',45,30,['resto']],frites:['Frites surgelées','sac de 10 kg',22,10,['resto','trad']],boisson:['Boissons','pack de 24',18,24,['resto','cafe','trad','hotel']],
+ pain:['Pains et viennoiseries','lot de 40',28,40,['cafe','resto']],cafeg:['Café en grains','sac de 5 kg',55,5,['cafe','hotel']],viande:['Viande et poisson','caisse de 10 kg',120,10,['trad','hotel']],
+ legumes:['Fruits et légumes','caisse de 15 kg',40,15,['trad','epic']],sec:['Produits secs','palette de 60',210,60,['epic']],frais:['Produits frais','bac de 30',150,30,['epic']],
+ vet:['Vêtements','lot de 20',380,20,['habit']],acc:['Accessoires mode','lot de 40',200,40,['habit']],elecs:['Appareils électroniques','lot de 10',900,10,['elec']],cables:['Câbles et accessoires','lot de 50',150,50,['elec']],
+ meubk:['Meubles en kit','lot de 6',700,6,['meub']],deco:['Décoration','carton de 20',160,20,['meub','hotel']],pieces:['Pièces détachées','lot de 25',260,25,['repar']],
+ coifp:['Produits capillaires','carton de 24',130,24,['coif']],papier:['Fournitures de bureau','carton de 20',90,20,['bur']],linge:['Linge de maison','lot de 20',220,20,['hotel']],
+ supp:['Boissons et compléments sport','carton de 24',110,24,['sport']],palm:['Marchandises en palettes','palette',600,1,['entrep','gros']],mp:['Matières premières','palette',900,1,['indus']]};
+const supFor=k=>Object.entries(SUP).filter(e=>e[1][4].includes(k));let invId=null;
+function initSup(z){const l=supFor(z.s);z.sup={};if(l.length){const v=z.stock/l.length;l.forEach(([i,s])=>z.sup[i]=Math.round(v/s[2]*s[3]))}z._last=z.stock;return z}
+function addSup(z,k,n){const s=SUP[k];z.sup=z.sup||{};z.sup[k]=(z.sup[k]||0)+s[3]*n;z.stock+=s[2]*n;z._last=z.stock}
+const _wok=wizOk;wizOk=function(){_wok();const z=G.biz[W.bid];if(z){initSup(z);save()}};
+const _sb=setupBiz;setupBiz=function(...a){return initSup(_sb(...a))};
+const _p3d5=p3Day;p3Day=function(){_p3d5();Object.values(G.biz).forEach(z=>{z.sup=z.sup||{};
+ if(z._last>0&&z.stock<z._last){const r=z.stock/z._last;Object.keys(z.sup).forEach(k=>z.sup[k]*=r)}
+ z.sord=(z.sord||[]).filter(o=>{if(o.due<=G.day){addSup(z,o.k,1);toast('📦 Fournitures livrées : '+SUP[o.k][0]);return false}return true});z._last=z.stock})};
+function markSupply(){let k=0,e=0;buildings.forEach(b=>{if(b.shop===true)b.name='Meubles & Équipement n°'+(++e)});
+ buildings.filter(b=>b.type==='commerce'&&b.base==='occupied'&&!b.shop).filter((b,i)=>i%5===2).slice(0,4).forEach(b=>{b.shop='supply';b.name='Fournitures Pro n°'+(++k);b.baseOwner='Fournitures SA'})}
+const _ms=markShops;markShops=function(){_ms();markSupply()};
+const _so=shopOpen;shopOpen=function(){sel&&sel.shop==='supply'?supShop():_so()};
+function supShop(){const ids=Object.keys(G.biz);if(!ids.length)return toast("Créez d'abord une entreprise");supCat(G.biz[catB]?catB:+ids[0],1)}
+function supCat(id,shop){catB=id;const z=G.biz[id],l=supFor(z.s),k=shop?.9:1;
+ modal(`<h2>${shop?'🛒 Fournitures Pro':'📦 Fournitures'}</h2><small>${shop?"Achat sur place −10 %, ajouté tout de suite à l'inventaire.":'Livraison en '+(hasVeh()?1:2)+' jour(s), frais '+(hasVeh()?'offerts (véhicule)':'+4 %')+'.'}</small>
+ ${shop?`<div style="margin:8px 0">Destination : <select onchange="supCat(+this.value,1)">${Object.keys(G.biz).map(i=>`<option value="${i}" ${+i===id?'selected':''}>${G.biz[i].name}</option>`).join('')}</select></div>`:''}
+ <table>${l.map(([i,s])=>{const p=Math.round(s[2]*k);return`<tr><td>${s[0]}<br><small>${s[1]} (${s[3]} unités)</small></td><td>${fmt(p+(shop?0:feeOf(p)))}</td><td><button onclick="buySup('${i}',${shop?1:0})">Acheter</button></td></tr>`}).join('')||'<tr><td>Aucun produit pour ce secteur</td></tr>'}</table>
+ <div class="row"><button class="sec" onclick="${shop?'closeModal()':`invModal(${id})`}">Retour</button></div>`)}
+function buySup(k,shop){const z=G.biz[catB];if(!z)return;const s=SUP[k],p=Math.round(s[2]*(shop?.9:1)),f=shop?0:feeOf(p);if(G.money<p+f)return toast('Trésorerie insuffisante');G.money-=p+f;
+ if(shop){addSup(z,k,1);toast(`Acheté : ${s[0]} (${s[1]})`)}else{(z.sord=z.sord||[]).push({k,due:G.day+(hasVeh()?1:2)});toast('Commande passée : '+s[0])}save();hud()}
+function invModal(id){const ids=Object.keys(G.biz);
+ if(!ids.length)return modal('<h2>🎒 Inventaire</h2><p>Aucune entreprise. Créez-en une pour gérer vos meubles et vos fournitures.</p><div class="row"><button class="sec" onclick="closeModal()">Fermer</button></div>');
+ id=(id!=null&&G.biz[id])?+id:(G.biz[invId]?invId:+ids[0]);invId=id;const z=G.biz[id];z.sup=z.sup||{};
+ const furn=Object.entries(z.inv).filter(e=>e[1]>0),sv=Object.entries(z.sup).reduce((a,[k,u])=>a+u*SUP[k][2]/SUP[k][3],0),gen=Math.max(0,z.stock-sv);
+ modal(`<h2>🎒 Inventaire</h2><div style="margin-bottom:8px"><select onchange="invModal(+this.value)">${ids.map(i=>`<option value="${i}" ${+i===id?'selected':''}>${G.biz[i].name}</option>`).join('')}</select></div>
+ <b>🪑 Mobilier et équipement non installés</b><table>${furn.map(([k,n])=>`<tr><td>${ITEMS[k][0]}</td><td>×${n}</td></tr>`).join('')||'<tr><td>Rien en attente</td></tr>'}</table>
+ <small>Installé dans le local : ${z.layout.length} objet(s)${(z.broken||[]).length?', '+z.broken.length+' en panne':''}</small>
+ <div class="row"><button onclick="layoutModal(${id})">🪑 Aménager</button><button class="sec" onclick="catalog(${id},0)">Commander du mobilier</button></div><hr style="border-color:#2c3550">
+ <b>📦 Fournitures</b><table>${Object.entries(z.sup).filter(e=>e[1]>=1).map(([k,u])=>`<tr><td>${SUP[k][0]}</td><td>${Math.floor(u)} unités</td></tr>`).join('')||'<tr><td>Aucune fourniture spécifique</td></tr>'}
+ <tr><td>Stock général</td><td>${fmt(gen)}</td></tr><tr><td><b>Valeur totale du stock</b></td><td><b>${fmt(z.stock)}</b></td></tr></table><small>Livraisons en cours : ${z.orders.length+(z.sord||[]).length}</small>
+ <div class="row"><button onclick="supCat(${id},0)">📦 Commander des fournitures</button><button class="sec" onclick="closeModal()">Fermer</button></div>`)}
+const _bm5=bizModal;bizModal=function(id){_bm5(id);$('mbox').insertAdjacentHTML('beforeend',`<div class="row"><button onclick="invModal(${id})">🎒 Inventaire et fournitures</button></div>`)};
+document.querySelector('#top .sp').insertAdjacentHTML('afterend','<button class="sec" onclick="invModal()">🎒 Inventaire</button>');
+
+</script>
+<script>
+addEventListener('error',e=>{const m=document.getElementById('msg');if(m){m.textContent='Erreur : '+e.message;m.style.display='block'}});
 boot();
 </script>
-<script src="phase3.js"></script>
-<script src="phase4.js"></script></body></html>
+</body></html>
