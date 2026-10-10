@@ -1,0 +1,64 @@
+
+fais le reste  (creation entrerpise et TOUT
+
+A exécuté une commande, fichiers partagés
+La dernière phase est ajoutée. Il y a maintenant 4 fichiers à mettre ensemble dans le même dossier de votre dépôt : index.html, phase3.js, phase4.js et README.md. Le code passe la vérification de syntaxe, mais je n’ai pas pu le lancer dans un navigateur, donc dites-moi si quelque chose ne marche pas.
+
+Création d’entreprise : 15 secteurs au total
+
+Six secteurs existaient déjà. Neuf nouveaux s’ajoutent : restaurant traditionnel, épicerie et supermarché, électronique, meubles, atelier de réparation, hôtellerie, entrepôt et distribution, commerce de gros et import-export, production industrielle.
+Chaque secteur a ses propres équipements obligatoires, sa surface minimale et son nombre de salariés.
+Douze nouveaux objets sont disponibles : cuisine pro, rayonnages, lits d’hôtel, racks à palettes, machines industrielles, etc.
+La production industrielle exige une holding.
+Bouton « 🏢 Groupe » (barre du haut) : il ouvre quatre écrans.
+
+Holding et filiales : création pour 15 000 €, résultats consolidés (chiffre d’affaires, stocks, employés), rattachement des entreprises comme filiales et dividendes.
+Logistique : camionnette ou camion (avec un chauffeur à 1 900 €/mois), livraisons gratuites en 1 jour, transferts de stock entre établissements et achat en gros via un entrepôt ouvert.
+Banque : trois prêts à échéances (12, 36 ou 60 mois), avec taux et mensualités. Ils sont accordés si votre patrimoine net couvre 40 % du montant.
+Expansion : trois villes (Lyon, Marseille, Bordeaux), à 2 500 €/mois chacune. Elles ne sont pas modélisées en 3D, c’est un système simplifié.
+Dans la fiche d’une entreprise et sur la carte
+
+Sur un bâtiment occupé par un concurrent, un bouton Racheter l’entreprise concurrente (prix du bâtiment +30 %) vous donne le local avec son entreprise déjà équipée.
+Dans la fiche d’une de vos entreprises, vous pouvez ouvrir une succursale (moins chère qu’une création) ou vendre jusqu’à 3 franchises (+8 000 € puis 400 €/mois chacune).
+Impôts : 15 % du chiffre d’affaires, ou 8 % pour les filiales de la holding. Le bilan mensuel affiche aussi les redevances et l’expansion.
+
+Le jeu couvre maintenant toutes les phases de votre cahier des charges, sous une forme simplifiée. Il n’y a pas d’intérieurs 3D (l’aménagement est en 2D), pas de camions animés sur la carte et pas d’autres villes jouables.
+
+Pour la suite, deux choses seraient utiles : tester une partie complète pour repérer les bugs et l’équilibrage (prix, salaires, ventes), et améliorer la carte. Dites-moi ce que vous constatez en jouant et je corrige.
+
+
+Index
+Code·HTML 
+
+Phase3
+JS 
+
+Phase4
+JS 
+
+Readme
+Document·MD 
+juste pr info  les pgase 3 et 4 (les fichier ) je les ai nommer Phase 3.js   et Phase4.js c bon ?
+
+bug : quand on clique sur batiment sa achique pas la pop-up pour les info du batiment + les actions.....
+
+en meme temps rajoute bouton iventaire ( pour meubles + fourniture (ex 30 burger surgeleé)
+Rajoute magasin pour les fournitures et magasins pr les meubles
+AMELIORE x100000000 le disign d ela carte
+
+Testing script logic with a stubbed DOM environment.
+Deux points d’abord : les fichiers doivent s’appeler exactement phase3.js et phase4.js (minuscules, sans espace). GitHub fait la différence entre majuscules et minuscules, donc Phase 3.js n’est jamais chargé. Je pense que c’est aussi la cause de votre bug : le jeu appelait une fonction définie dans phase3.js, qui n’existait pas, et la fiche du bâtiment plantait. Je corrige ça pour que ça ne puisse plus arriver, puis j’ajoute l’inventaire, les magasins et la refonte de la carte.
+
+A exécuté une commande, fichiers partagés
+Presented file
+
+Phase5
+JS 
+En pause : votre utilisation gratuite sera rétablie à 23:40. Continuez à ce moment-là.
+
+Vous n’avez plus de messages gratuits jusqu’à 23:40.
+
+
+Claude est une IA et peut commettre des erreurs. Veuillez vérifier les réponses.
+
+Claude a terminé sa réponse.
