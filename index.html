@@ -74,7 +74,7 @@ function apply(){buildings.forEach(b=>{b.state=b.base;b.owner=b.baseOwner;b.cond
  if(G.owned.includes(b.id)){b.state=G.sublet.includes(b.id)?'sublet':'owned';b.owner='Vous'}
  else if(G.leased.includes(b.id)){b.state='leased';b.owner='Vous (locataire)'}})}
 function proj(){let inc=0,exp=0;G.sublet.forEach(i=>inc+=buildings[i].rent);G.owned.forEach(i=>exp+=Math.round(buildings[i].price*.001));
- G.leased.forEach(i=>exp+=buildings[i].rent);exp+=Math.round(G.debt*.015);Object.values(G.biz).forEach(z=>{if(z.open)exp+=z.staff*(1800+150*(z.train||0))});return{inc,exp}}
+ G.leased.forEach(i=>exp+=buildings[i].rent);exp+=Math.round(G.debt*.015);Object.values(G.biz).forEach(z=>{if(z.open)exp+=(typeof wagesOf==='function'?wagesOf(z):z.staff*(1800+150*(z.train||0)))});return{inc,exp}}
 function month(){window.p3Month&&p3Month();const p=proj(),rev=Math.round(G.bizRev),n=p.inc+rev-p.exp;G.bizRev=0;G.money+=p.inc-p.exp;G.hist.push({inc:p.inc+rev,exp:p.exp});if(G.hist.length>12)G.hist.shift();toast(`Bilan du mois : ${n>=0?'+':''}${fmt(n)}`+(G.money<0?' ⚠ Trésorerie négative !':''));save()}
 function hud(){const mine=buildings.filter(b=>G.owned.includes(b.id));
  $('money').textContent=fmt(G.money);$('count').textContent=G.owned.length+G.leased.length;
@@ -212,7 +212,7 @@ function reqs(id){const b=buildings[id],biz=G.biz[id],s=SECT[biz.s],cnt={};biz.l
 function bizModal(id){const b=buildings[id],biz=G.biz[id],s=SECT[biz.s],r=reqs(id),all=r.every(x=>x.ok);
  const inv=Object.keys(biz.inv).filter(k=>biz.inv[k]).map(k=>biz.inv[k]+'× '+ITEMS[k][0]).join(', ')||'aucun';
  modal(`<h2>🏪 ${biz.name}</h2><small>${s.n} · ${b.address}</small><table><tr><td>Statut</td><td>${biz.open?'<b style="color:#3ddc84">Ouvert</b>':'Fermé'}</td></tr><tr><td>Qualité</td><td>${QN[biz.q]}</td></tr>
- <tr><td>Chiffre d'affaires (hier)</td><td>${fmt(biz.rev)}</td></tr><tr><td>Stock</td><td>${fmt(biz.stock)}</td></tr><tr><td>Employés</td><td>${biz.staff} (${fmt(biz.staff*1800)}/mois)</td></tr>
+ <tr><td>Chiffre d'affaires (hier)</td><td>${fmt(biz.rev)}</td></tr><tr><td>Stock</td><td>${fmt(biz.stock)}</td></tr><tr><td>Employés</td><td>${biz.staff} (${fmt(typeof wagesOf==='function'?wagesOf(biz):biz.staff*1800)}/mois)</td></tr>
  <tr><td>Inventaire non installé</td><td>${inv}</td></tr><tr><td>Commandes en cours</td><td>${biz.orders.length}</td></tr></table>
  <b>Conditions d'ouverture</b>${r.map(x=>`<div>${x.ok?'✅':'❌'} ${x.t}</div>`).join('')}
  <div class="row"><button onclick="layoutModal(${id})">🪑 Aménager</button><button onclick="catalog(${id},0)">🛒 Catalogue</button>
@@ -272,7 +272,7 @@ let last=performance.now(),acc=0;
 (function loop(t){requestAnimationFrame(loop);const dt=Math.min((t-last)/1000,.1);last=t;
  if(!inGame){C.yaw+=dt*.08;updCam()}
  else if(!uiPause){acc+=dt*speed;if(acc>=1.5){acc=0;G.day++;dayTick();window.p3Day&&p3Day();if(G.day%30===0)month();hud()}}
- if(typeof moveCars==='function')moveCars(dt);ren.render(scene,cam)})(performance.now());
+ if(typeof moveCars==='function')moveCars(dt);ren.render(window.__ed&&window.__ed.on?window.__ed.scene:scene,window.__ed&&window.__ed.on?window.__ed.cam:cam)})(performance.now());
 
 </script>
 <script>
@@ -352,8 +352,8 @@ function genCity(){_rs=42;buildings.length=0;const sx=[56,48,40,36,36,40,48,56].
     const w=Math.max(5.2,step*RR(.8,.95)-.4),dp=dep[k]*RR(.88,1),s=q*step+step/2,set=1.8;
     const x=A[0]+d[0]*s+n[0]*(set+dp/2),z=A[1]+d[1]*s+n[1]*(set+dp/2),ry=Math.atan2(out[0],out[1]);
     const dc=Math.hypot(x,z)/CITY.R,area=Math.round(w*dp*floors*4),locP=.38+2*Math.exp(-Math.pow(dc/.5,2)),priceM2=500*typeF[type]*locP*Math.pow(Math.max(1,area/300),-.05)*RR(.92,1.08);
-    const price=Math.max(15000,Math.round(area*priceM2/1000)*1000),sr=R_(),occ=dc<.3?.52:.3;
-    const st=sr<.07?'blocked':sr<.07+(1-.07-occ)*.62?'sale':sr<.07+(1-.07-occ)*.62+(1-.07-occ)*.38?'rent':'occupied';
+    const price=Math.max(15000,Math.round(area*priceM2/1000)*1000),sr=R_(),pz=dc<.3?[.05,.5,.25]:dc<.62?[.05,.38,.3]:[.05,.3,.3];
+    const st=sr<pz[0]?'blocked':sr<pz[0]+pz[1]?'occupied':sr<pz[0]+pz[1]+pz[2]?'rent':'sale';
     const id=buildings.length,cond=['Neuf','Bon','Bon','Moyen','À rénover'][RI(0,4)];
     const pre=(k===0||k===3)?1:2;
     buildings.push({id,type,floors,area,w,d:dp,h:floors*3.2+1,x,z,ry,dc,hood,price,rent:Math.round(price*.0072/10)*10,base:st,baseOwner:st==='occupied'?'Entreprise concurrente':st==='blocked'?'—':'Aucun',baseCond:cond,
@@ -857,7 +857,7 @@ function dayTick(){Object.entries(G.biz).forEach(([id,biz])=>{
  if(biz.strike>G.day){biz.rev=0;return}
  const s=SECT[biz.s],b=buildings[id],cnt={};biz.layout.forEach(p=>cnt[p.id]=(cnt[p.id]||0)+1);let extra=0;Object.entries(cnt).forEach(([i,n])=>extra+=Math.max(0,n-(s.req[i]||0)));
  if(biz.auto)autoBuy(biz,s);
- let rev=s.rev*biz.q*locOf(b)*(1+.08*Math.min(5,extra))*Math.sqrt(Math.min(1,biz.staff/s.staff))*(.85+Math.random()*.3)*(window.bizMult?bizMult(id,biz):1),cogs=rev*.35*(.5+.5*biz.q);
+ let rev=s.rev*biz.q*locOf(b)*(1+.08*Math.min(5,extra))*Math.sqrt(Math.min(1,biz.staff/s.staff))*(.85+Math.random()*.3)*(window.bizMult?bizMult(id,biz):1),cogs=rev*.35*(.5+.5*biz.q)/(1+(biz.pp||0));
  if(biz.stock<cogs){rev*=.4;cogs=biz.stock;toast('⚠ Rupture de stock : '+biz.name)}
  biz.stock-=cogs;biz.rev=Math.round(rev);G.money+=biz.rev;G.bizRev+=biz.rev});
  dailyEvents();checkMis()}
@@ -914,6 +914,236 @@ document.querySelector('#top .sp').insertAdjacentHTML('afterend','<button class=
 if(typeof LOANS!=='undefined'){LOANS[0][2]=.06;LOANS[1][2]=.075;LOANS[2][2]=.09}
 // ouverture automatique après création avec forfait d'équipement
 const _wok7=wizOk;wizOk=function(){const bid=W.bid,auto=W.mode==='auto';_wok7();const z=G.biz[bid];if(z&&auto&&!z.open&&reqs(bid).every(x=>x.ok)){z.open=true;save();toast('🏪 '+z.name+' est ouverte !');bizModal(bid)}};
+
+</script>
+<script>
+// ===== Empire Ambitions — Phase 8 : gestion d'entreprise (personnel, prix, historique, vente) =====
+const FN=['Léa','Hugo','Emma','Louis','Chloé','Jules','Manon','Nathan','Camille','Lucas','Inès','Théo','Sarah','Maxime','Zoé','Antoine','Clara','Paul','Lina','Adam','Julie','Karim','Anaïs','Yanis','Marine','Samuel','Océane','Bastien'];
+const LN=['Martin','Bernard','Dubois','Thomas','Robert','Petit','Durand','Leroy','Moreau','Simon','Laurent','Lefebvre','Michel','Garcia','David','Bertrand','Roux','Vincent','Fournier','Morel','Girard','André','Mercier','Blanc','Guérin','Boyer'];
+const ROLES={resto:['Cuisinier','Serveur','Caissier'],trad:['Cuisinier','Serveur','Commis'],cafe:['Boulanger','Serveur','Caissier'],habit:['Vendeur','Caissier','Styliste'],coif:['Coiffeur','Assistant'],bur:['Conseiller','Assistant','Comptable'],sport:['Coach','Accueil','Technicien'],epic:['Caissier','Mise en rayon','Boucher'],elec:['Vendeur','Technicien','Caissier'],meub:['Vendeur','Livreur','Décorateur'],repar:['Mécanicien','Vendeur'],hotel:['Réceptionniste','Femme de chambre','Cuisinier','Portier'],entrep:['Cariste','Manutentionnaire','Logisticien'],gros:['Acheteur','Cariste','Logisticien'],indus:['Opérateur','Technicien','Cariste']};
+const mWage=sk=>1200+200*sk,rr8=(a,b)=>a+Math.random()*(b-a),pick8=a=>a[Math.floor(Math.random()*a.length)];
+let _eid=1;
+function newEmp(z,sk,fair){sk=sk||(Math.random()<.2?2:Math.random()<.65?3:4);return{id:Date.now()%1e6*10+(_eid++),n:pick8(FN)+' '+pick8(LN),role:pick8(ROLES[z.s]||['Employé']),sk,w:Math.round(mWage(sk)*(fair?1:rr8(.92,1.12))/10)*10,mood:70,d:G.day||1,mgr:0}}
+function ensureEmps(z){if(!z.emps){z.emps=[];for(let i=0;i<(z.staff||0);i++)z.emps.push(newEmp(z,null,true))}z.staff=z.emps.length;return z.emps}
+const wagesOf=z=>{const e=ensureEmps(z);return e.reduce((a,x)=>a+x.w+150*(z.train||0),0)};
+function empMult(z){const e=ensureEmps(z);if(!e.length)return 1;const sk=e.reduce((a,x)=>a+x.sk,0)/e.length,md=e.reduce((a,x)=>a+x.mood,0)/e.length,m=e.find(x=>x.mgr);
+ return(.82+.06*sk)*(.85+.2*md/100)*(m?1+.015*m.sk:1)}
+const pf=p=>(1+p)*(1-.8*p);
+// effets sur les ventes (prix + équipe)
+const _bm8=bizMult;bizMult=function(id,z){return _bm8(id,z)*empMult(z)*pf(z.pp||0)};
+// la grève dépend du moral
+const _p3d8=p3Day;p3Day=function(){_p3d8();Object.entries(G.biz).forEach(([id,z])=>{z.mrev=(z.mrev||0)+(z.rev||0);if(!z.open)return;const e=ensureEmps(z),s=SECT[z.s],p=z.pp||0;
+ z.rep=Math.max(0,Math.min(100,z.rep+(p>0?-p*.8:-p*.6)));
+ const hasM=e.some(x=>x.mgr);
+ for(let i=e.length-1;i>=0;i--){const x=e[i],target=55+(x.w/mWage(x.sk)-1)*120+4*(z.train||0)+(z.rep>70?6:0)-(e.length<s.staff?12:0)+(hasM&&!x.mgr?5:0);x.mood+=(target-x.mood)*.05;x.mood=Math.max(0,Math.min(100,x.mood));
+  if(x.mood<18&&Math.random()<.02){e.splice(i,1);z.staff=e.length;toast(`🚪 ${x.n} (${x.role}) a démissionné de ${z.name}`)}}
+ if(e.length>=3&&!z.strike&&e.reduce((a,x)=>a+x.mood,0)/e.length<22&&Math.random()<.03){z.strike=G.day+3;toast(`✊ Grève chez ${z.name} : moral trop bas !`)}})};
+// historique mensuel
+const _m8=month;month=function(){Object.values(G.biz).forEach(z=>{(z.hist=z.hist||[]).push(Math.round(z.mrev||0));if(z.hist.length>12)z.hist.shift();z.mrev=0});_m8()};
+// ---- marché de l'emploi
+function candidates(z){if(!z.cand||z.candDay<G.day-30||!z.cand.length){z.cand=[];for(let i=0;i<6;i++)z.cand.push(newEmp(z,Math.random()<.15?1:Math.random()<.2?5:Math.ceil(rr8(1.6,4.6))));z.candDay=G.day}return z.cand}
+const MOOD=m=>m>=80?'😀':m>=60?'🙂':m>=40?'😐':m>=22?'😟':'😡',STAR=n=>'★'.repeat(n)+'☆'.repeat(5-n);
+function persModal(id){const z=G.biz[id],s=SECT[z.s],e=ensureEmps(z),cand=candidates(z),avgS=e.length?(e.reduce((a,x)=>a+x.sk,0)/e.length).toFixed(1):'–',avgM=e.length?Math.round(e.reduce((a,x)=>a+x.mood,0)/e.length):0;
+ modal(`<h2>👥 Personnel — ${z.name}</h2><small>${e.length} employé(s) (minimum conseillé : ${s.staff}) · masse salariale ${fmt(wagesOf(z))}/mois · compétence moyenne ${avgS}/5 · moral ${avgM}% ${MOOD(avgM)}</small>
+ <div style="max-height:46vh;overflow:auto;margin:6px 0"><table>${e.map((x,i)=>`<tr><td>${x.mgr?'👔 ':''}<b>${x.n}</b><br><small>${x.role} · ${STAR(x.sk)}</small></td><td>${fmt(x.w)}<br><small>${x.w<mWage(x.sk)*.95?'⚠ sous le marché':'marché '+fmt(mWage(x.sk))}</small></td><td>${MOOD(x.mood)} ${Math.round(x.mood)}%</td>
+ <td style="white-space:nowrap"><button class="sec" onclick="empRaise(${id},${i})">💶 +10 %</button> <button class="sec" ${x.sk>=5?'disabled':''} onclick="empTrain(${id},${i})">🎓 600 €</button> <button class="sec" onclick="empMgr(${id},${i})">${x.mgr?'Retirer chef':'👔 Chef'}</button> <button class="red" onclick="empFire(${id},${i})">Renvoyer</button></td></tr>`).join('')||'<tr><td>Aucun employé</td></tr>'}</table></div>
+ <b>🧑‍💼 Candidatures (frais de recrutement : 400 €)</b><div style="max-height:30vh;overflow:auto"><table>${cand.map((x,i)=>`<tr><td><b>${x.n}</b><br><small>${x.role} · ${STAR(x.sk)}</small></td><td>${fmt(x.w)}/mois</td><td><button ${e.length>=12||G.money<400?'disabled':''} onclick="empHire(${id},${i})">Embaucher</button></td></tr>`).join('')||'<tr><td>Aucune candidature</td></tr>'}</table></div>
+ <div class="row"><button class="sec" onclick="empRefresh(${id})">🔄 Nouvelles candidatures (200 €)</button><button class="sec" onclick="bizModal(${id})">Retour</button></div>`)}
+function empHire(id,i){const z=G.biz[id],e=ensureEmps(z),c=candidates(z)[i];if(!c||e.length>=12||G.money<400)return;G.money-=400;e.push(c);z.cand.splice(i,1);z.staff=e.length;save();hud();toast('👋 '+c.n+' embauché(e) : '+c.role);persModal(id)}
+function empFire(id,i){const z=G.biz[id],e=ensureEmps(z),x=e[i];if(!x)return;if(G.money<x.w)return toast('Indemnité de licenciement : '+fmt(x.w)+' requise');G.money-=x.w;e.splice(i,1);z.staff=e.length;e.forEach(o=>o.mood=Math.max(0,o.mood-5));save();hud();toast('Licenciement de '+x.n+' (indemnité '+fmt(x.w)+')');persModal(id)}
+function empRaise(id,i){const z=G.biz[id],x=ensureEmps(z)[i];if(!x)return;if(x.w>=mWage(x.sk)*1.6)return toast('Salaire déjà très élevé');x.w=Math.round(x.w*1.1/10)*10;x.mood=Math.min(100,x.mood+8);save();persModal(id)}
+function empTrain(id,i){const z=G.biz[id],x=ensureEmps(z)[i];if(!x||x.sk>=5||G.money<600)return;G.money-=600;x.sk++;x.mood=Math.min(100,x.mood+4);save();hud();toast(`🎓 ${x.n} a progressé (${STAR(x.sk)}). Pensez à réviser son salaire.`);persModal(id)}
+function empMgr(id,i){const z=G.biz[id],e=ensureEmps(z),was=e[i].mgr;e.forEach(x=>x.mgr=0);e[i].mgr=was?0:1;save();persModal(id)}
+function empRefresh(id){const z=G.biz[id];if(G.money<200)return;G.money-=200;z.cand=null;save();hud();persModal(id)}
+// anciens boutons Embaucher / Licencier : actions rapides
+function staff(id,d){const z=G.biz[id],e=ensureEmps(z);if(d>0){const c=candidates(z).slice().sort((a,b)=>a.w-b.w)[0];if(!c||e.length>=12||G.money<400)return toast(e.length>=12?'Effectif maximum atteint':'Trésorerie insuffisante');empHire(id,z.cand.indexOf(c));return bizModal(id)}
+ if(!e.length)return;let w=0;e.forEach((x,i)=>{if(x.sk*10+x.mood<e[w].sk*10+e[w].mood)w=i});empFire(id,w);bizModal(id)}
+// ---- gestion : prix, historique, vente
+function gestModal(id){const z=G.biz[id],b=buildings[id],h=z.hist||[],mx=Math.max(1,...h),pp=Math.round((z.pp||0)*100);
+ const bars=h.length?`<svg viewBox="0 0 ${h.length*22+4} 64" style="width:100%;max-width:340px;height:70px;background:#161d33;border-radius:6px">${h.map((v,i)=>`<rect x="${4+i*22}" y="${60-v/mx*54}" width="16" height="${v/mx*54}" fill="#3ddc84"/>`).join('')}</svg><small>Chiffre d'affaires des ${h.length} derniers mois (max ${fmt(mx)})</small>`:'<small>Pas encore d\'historique : il apparaît après le premier mois.</small>';
+ modal(`<h2>⚙️ Gestion — ${z.name}</h2>
+ <b>Nom commercial</b><div class="row" style="margin:4px 0 8px"><input id="rn" value="${clean(z.name)}" style="flex:1;padding:6px"><button class="sec" onclick="renBiz(${id})">Renommer</button></div>
+ <b>💶 Politique de prix : ${pp>0?'+':''}${pp} %</b><div class="row" style="margin:4px 0">${[-20,-10,0,10,20].map(v=>`<button class="${pp===v?'on':'sec'}" onclick="setPrice(${id},${v})">${v>0?'+':''}${v} %</button>`).join('')}</div>
+ <small>Des prix bas attirent plus de clients et améliorent la réputation. Des prix hauts augmentent la marge mais la réputation baisse lentement. Marge de ${pp>0?'plus':pp<0?'moins':'référence'}.</small>
+ <div style="margin:10px 0"><b>📈 Historique</b><br>${bars}</div>
+ <b>Valeur de revente estimée</b> : ${fmt(bizValue(z))}
+ <div class="row"><button class="red" onclick="sellBizAsk(${id})">🏷️ Vendre l'entreprise</button><button class="sec" onclick="bizModal(${id})">Retour</button></div>`)}
+function renBiz(id){const v=clean(document.getElementById('rn').value).trim().slice(0,30);if(v){G.biz[id].name=v;save()}gestModal(id)}
+function setPrice(id,v){G.biz[id].pp=v/100;save();gestModal(id)}
+function bizValue(z){const eq=[...z.layout.map(p=>p.id),...Object.entries(z.inv).flatMap(([k,n])=>Array(n).fill(k))].reduce((a,k)=>a+ITEMS[k][1],0)*.5,h=z.hist||[],avg=h.length?h.reduce((a,b)=>a+b,0)/h.length:z.rev*30;return Math.round((eq+z.stock*.8+avg*.6*(.5+z.rep/100))/100)*100}
+function sellBizAsk(id){const z=G.biz[id];modal(`<h2>🏷️ Vendre ${z.name} ?</h2><p>Vous recevrez ${fmt(bizValue(z))}. Le personnel est reclassé sans frais. Le local reste à vous.</p><div class="row"><button class="red" onclick="sellBiz(${id})">Confirmer la vente</button><button class="sec" onclick="gestModal(${id})">Annuler</button></div>`)}
+function sellBiz(id){const z=G.biz[id];G.money+=bizValue(z);delete G.biz[id];save();hud();toast('🏷️ Entreprise vendue');closeModal();sel=buildings[id];show()}
+// ---- fiche entreprise : accès aux nouveaux écrans
+const _bm8b=bizModal;bizModal=function(id){_bm8b(id);const z=G.biz[id];ensureEmps(z);const e=z.emps,md=e.length?Math.round(e.reduce((a,x)=>a+x.mood,0)/e.length):0;
+ $('mbox').insertAdjacentHTML('beforeend',`<div class="row"><button onclick="persModal(${id})">👥 Personnel (${e.length}) ${MOOD(md)}</button><button onclick="gestModal(${id})">📊 Gestion et prix</button></div>`)};
+
+</script>
+<script>
+// ===== Empire Ambitions — Phase 9a : bibliothèque de modèles 3D (mobilier et équipement) =====
+const _em={};
+const ML=c=>_em['l'+c]||(_em['l'+c]=new THREE.MeshLambertMaterial({color:c}));
+const MPh=(c,s,sp)=>{const k='p'+c+'_'+s;return _em[k]||(_em[k]=new THREE.MeshPhongMaterial({color:c,shininess:s||60,specular:sp||0x888888}))};
+const MEm=(c,i)=>{const k='e'+c;return _em[k]||(_em[k]=new THREE.MeshBasicMaterial({color:c,toneMapped:false}))};
+const E_GL=new THREE.MeshPhongMaterial({color:0xa9d6ee,transparent:true,opacity:.3,shininess:120,specular:0xffffff,depthWrite:false});
+const ST=MPh(0xc9d0d6,90,0xffffff),DS=MPh(0x6f7780,60,0x999999),BK=MPh(0x1d1f24,50,0x666666),WH=ML(0xf2f2ef),WHp=MPh(0xf4f4f1,50,0xaaaaaa),WD=ML(0xa8743f),WDd=ML(0x6b4426),WDl=ML(0xd9b27a),RD=ML(0xc0392b),BLm=ML(0x2e6fb0),GRm=ML(0x4e9e55),YL=ML(0xf2c230),OR=ML(0xe8791a),GY=ML(0x8c939a),LT=MPh(0x7a2d2d,70,0x555555),CD=ML(0xb48a55),NV=ML(0x2c3e66),SCR=MEm(0x74c8ff);
+const PROD=[0xe74c3c,0x3498db,0xf1c40f,0x2ecc71,0xecf0f1,0x9b59b6,0xe67e22,0x1abc9c];
+const rg=s=>()=>((s=(s*16807+11)%2147483647)/2147483647);
+function bx(g,sx,sy,sz,m,x,y,z){const o=new THREE.Mesh(BOXG,m);o.scale.set(sx,sy,sz);o.position.set(x,y+sy/2,z);o.castShadow=o.receiveShadow=true;g.add(o);return o}
+function cy(g,r,h,m,x,y,z,seg,r2){const o=new THREE.Mesh(new THREE.CylinderGeometry(r2==null?r:r2,r,h,seg||14),m);o.position.set(x,y+h/2,z);o.castShadow=o.receiveShadow=true;g.add(o);return o}
+function hcy(g,r,len,m,x,y,z,ax){const o=new THREE.Mesh(new THREE.CylinderGeometry(r,r,len,12),m);o.position.set(x,y,z);if(ax==='x')o.rotation.z=Math.PI/2;else o.rotation.x=Math.PI/2;o.castShadow=true;g.add(o);return o}
+function sph(g,r,m,x,y,z){const o=new THREE.Mesh(new THREE.SphereGeometry(r,14,10),m);o.position.set(x,y,z);o.castShadow=true;g.add(o);return o}
+const legs4=(g,w,h,hh,r,m)=>[[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([a,b])=>cy(g,r,hh,m,a*(w/2-r-.02),0,b*(h/2-r-.02),8));
+function products(g,w,d,y,seed,hmax,z0){const r=rg(seed),n=Math.max(2,Math.round(w/.22));for(let i=0;i<n;i++){const hh=.12+r()*hmax;bx(g,.16,hh,d*.7,ML(PROD[Math.floor(r()*8)]),-w/2+.12+i*(w-.2)/n,y,z0||0)}}
+const MODELS={
+chaise:(g)=>{legs4(g,.4,.4,.45,.022,WDd);bx(g,.42,.05,.42,WDl,0,.45,0);bx(g,.38,.04,.38,RD,0,.5,0);bx(g,.42,.5,.04,WDl,0,.5,-.19)},
+table:(g,w,h)=>{legs4(g,w*.9,h*.9,.72,.04,WDd);bx(g,w*.95,.06,h*.95,WDl,0,.72,0);cy(g,.13,.015,WH,-.3,.78,.2,18);cy(g,.13,.015,WH,.3,.78,-.2,18);cy(g,.04,.12,E_GL,.25,.78,.3,10);bx(g,.2,.002,.2,RD,0,.78,0)},
+comptoir:(g,w,h)=>{bx(g,w*.97,.95,h*.8,WD,0,0,.02);bx(g,w,.05,h*.92,MPh(0x2b2b2e,60),0,.95,0);bx(g,w*.9,.02,.04,ST,0,.08,h*.42)},
+caisse:(g)=>{bx(g,.82,.82,.7,WD,0,0,0);bx(g,.8,.04,.7,MPh(0x2b2b2e,60),0,.82,0);bx(g,.42,.14,.36,BK,0,.86,.05);const s=bx(g,.34,.2,.03,BK,0,1.0,-.1);s.rotation.x=-.3;bx(g,.3,.15,.02,SCR,0,1.02,-.085).rotation.x=-.3;bx(g,.36,.03,.1,DS,0,.9,.3)},
+frigo:(g,w,h)=>{bx(g,w*.92,1.85,h*.92,ST,0,0,0);bx(g,w*.9,.02,.02,BK,0,1.0,h*.46);bx(g,.03,.6,.03,BK,-w*.3,1.05,h*.47);bx(g,.03,.5,.03,BK,-w*.3,.3,h*.47);cy(g,.02,.02,DS,0,0,0,6)},
+congelo:(g,w,h)=>{legs4(g,w,h,.08,.03,DS);bx(g,w*.96,.8,h*.9,WHp,0,.08,0);bx(g,w*.9,.03,h*.8,E_GL,0,.88,0);const r=rg(5);for(let i=0;i<8;i++)bx(g,.2,.1,.2,ML(PROD[Math.floor(r()*8)]),-w*.38+i*(w*.76/7),.78,(r()-.5)*.3)},
+friteuse:(g)=>{bx(g,.86,.82,.86,ST,0,0,0);[-.2,.2].forEach(x=>{bx(g,.32,.03,.5,MPh(0x3b2a12,30),x,.82,-.02);bx(g,.28,.1,.4,DS,x,.85,0);hcy(g,.012,.3,BK,x,.92,.34,'z')});bx(g,.7,.16,.06,BK,0,.62,.45);[-.2,0,.2].forEach(x=>cy(g,.03,.03,RD,x,.62,.48,8))},
+grill:(g,w,h)=>{bx(g,w*.95,.82,h*.9,ST,0,0,0);bx(g,w*.88,.04,h*.7,BK,0,.82,-.02);for(let i=0;i<10;i++)bx(g,.02,.03,h*.66,DS,-w*.4+i*w*.8/9,.86,-.02);for(let i=0;i<5;i++)cy(g,.035,.04,BK,-w*.35+i*w*.175,.6,h*.45,8);bx(g,w*.9,.18,.03,BK,0,.62,h*.45)},
+four:(g,w,h)=>{bx(g,w*.95,.95,h*.9,ST,0,0,0);bx(g,w*.66,.5,.03,BK,0,.25,h*.45);bx(g,w*.62,.4,.02,E_GL,0,.3,h*.465);bx(g,w*.7,.03,.04,DS,0,.8,h*.47);[-.7,-.35,.0,.35].forEach((x,i)=>cy(g,.03,.04,BK,x*w*.5+w*.3,.66,h*.45,8))},
+cuisine:(g,w,h)=>{bx(g,w*.95,.88,h*.9,ST,0,0,0);bx(g,w*.96,.04,h*.92,DS,0,.88,0);[[-.55,-.2],[-.1,-.2],[.35,-.2],[-.55,.3],[-.1,.3],[.35,.3]].forEach(([a,b])=>cy(g,.2,.03,BK,a*w*.6,.92,b*h*.6,18));cy(g,.15,.12,ST,-.55*w*.6,.95,-.2*h*.6,16);cy(g,.12,.25,DS,.35*w*.6,.95,.3*h*.6,16);bx(g,w*.9,.3,h*.6,ST,0,1.85,0);bx(g,.4,.4,.4,ST,0,2.15,0);cy(g,.1,.45,DS,0,2.45,0,10);bx(g,w*.8,.06,.04,DS,0,1.3,-h*.45)},
+vitrine:(g,w,h)=>{bx(g,w*.97,.55,h*.92,ST,0,0,0);bx(g,w*.95,.6,h*.85,E_GL,0,.55,0);bx(g,w*.95,.03,h*.85,DS,0,1.15,0);bx(g,w*.94,.03,h*.8,DS,0,.85,0);const r=rg(9);for(let i=0;i<9;i++){cy(g,.1,.1,ML([0xf4d6a0,0xe9a0b4,0xb88a5a,0xfff1d0][i%4]),-w*.42+i*(w*.84/8),.55,-.1,14);bx(g,.16,.08,.16,ML(PROD[Math.floor(r()*8)]),-w*.42+i*(w*.84/8),.88,.1)}},
+vtech:(g,w,h)=>{bx(g,w*.97,.6,h*.9,WH,0,0,0);bx(g,w*.95,.5,h*.8,E_GL,0,.6,0);for(let i=0;i<4;i++){const x=-w*.36+i*w*.24;bx(g,.34,.015,.24,DS,x,.62,.0);const s=bx(g,.34,.22,.015,BK,x,.63,-.1);s.rotation.x=-.15;bx(g,.3,.18,.01,SCR,x,.65,-.09)}bx(g,w*.9,.03,.12,MEm(0xffffff),0,1.05,-h*.4)},
+etagere:(g,w,h)=>{[[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([a,b])=>bx(g,.04,1.9,.04,ST,a*(w/2-.04),0,b*(h/2-.04)));const r=rg(w*7);[.1,.6,1.1,1.6].forEach((y,i)=>{bx(g,w*.96,.04,h*.9,WD,0,y,0);for(let k=0;k<5;k++)bx(g,.18+r()*.14,.2+r()*.2,h*.5,ML(PROD[Math.floor(r()*8)]),-w*.4+k*w*.2,y+.04,0)})},
+rayon:(g,w,h)=>{bx(g,w*.96,1.7,.05,ST,0,0,0);bx(g,w*.96,.12,h*.9,ST,0,0,0);[.3,.65,1.0,1.35].forEach((y,i)=>{bx(g,w*.95,.03,h*.42,DS,0,y,.22);bx(g,w*.95,.03,h*.42,DS,0,y,-.22);products(g,w*.94,h,y+.03,i*3+1,.2,.22);products(g,w*.94,h,y+.03,i*3+2,.2,-.22)});bx(g,w*.96,.12,.06,RD,0,1.7,0)},
+presentoir:(g,w,h)=>{bx(g,w*.96,.12,h*.96,WDl,0,0,0);bx(g,w*.55,.4,h*.35,ML(0x6b7f94),-w*.12,.12,-h*.2);bx(g,w*.55,.45,.1,ML(0x6b7f94),-w*.12,.12,-h*.37);bx(g,.12,.3,h*.35,ML(0x6b7f94),-w*.38,.12,-h*.2);bx(g,.12,.3,h*.35,ML(0x6b7f94),w*.14,.12,-h*.2);bx(g,.5,.05,.5,ML(0xf0e6d2),-w*.12,.4,.0);cy(g,.2,.02,WH,w*.12,.55,.15,14);bx(g,.5,.4,.5,WD,w*.2,.12,.2);cy(g,.02,1.2,ST,w*.38,.12,-h*.3,8);cy(g,.15,.2,ML(0xf5e6b8),w*.38,1.2,-h*.3,14,.08)},
+portant:(g,w,h)=>{[-1,1].forEach(a=>{cy(g,.2,.03,DS,a*w*.4,0,0,14);cy(g,.015,1.6,ST,a*w*.4,0,0,8)});hcy(g,.015,w*.84,ST,0,1.55,0,'x');const r=rg(4);for(let i=0;i<9;i++){const x=-w*.38+i*w*.095;bx(g,.05,.62+r()*.2,.38,ML(PROD[Math.floor(r()*8)]),x,.85,0)}},
+cabine:(g,w,h)=>{[[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([a,b])=>bx(g,.06,2,.06,WDd,a*(w/2-.05),0,b*(h/2-.05)));bx(g,w*.95,2,.04,WDl,0,0,-h*.46);bx(g,.04,2,h*.9,WDl,-w*.46,0,0);bx(g,w*.95,.06,h*.95,WDd,0,2,0);bx(g,w*.88,1.7,.03,ML(0xb04a6a),0,.2,h*.44);bx(g,.5,.4,.4,WDl,w*.2,0,-h*.2);bx(g,.5,1.1,.02,MPh(0xcfe8f5,120,0xffffff),w*.1,.7,-h*.43)},
+poste:(g,w,h)=>{bx(g,w*.97,.04,h*.9,WDl,0,.72,0);bx(g,.04,.72,h*.85,ST,-w*.46,0,0);bx(g,.45,.7,h*.8,WD,w*.3,.0,0);bx(g,.4,.12,.02,DS,w*.3,.5,h*.4);bx(g,.4,.12,.02,DS,w*.3,.25,h*.4)},
+ordi:(g)=>{bx(g,.9,.04,.7,WDl,0,.72,0);[[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([a,b])=>cy(g,.025,.72,ST,a*.4,0,b*.3,8));bx(g,.5,.3,.03,BK,0,.88,-.15);bx(g,.46,.26,.01,SCR,0,.9,-.135);bx(g,.1,.12,.05,BK,0,.76,-.15);bx(g,.4,.015,.14,DS,0,.76,.1);bx(g,.1,.01,.07,BK,.32,.76,.1);bx(g,.16,.38,.36,ML(0x30343b),.34,.76,-.15)},
+imprimante:(g)=>{bx(g,.7,.7,.55,WH,0,0,0);bx(g,.58,.22,.46,WHp,0,.7,0);bx(g,.4,.02,.2,BK,0,.82,.05);bx(g,.4,.015,.18,WH,0,.9,.1).rotation.x=.3;bx(g,.2,.03,.04,SCR,.18,.88,.23)},
+fauteuil:(g,w,h)=>{cy(g,.36,.05,DS,0,0,0,20);cy(g,.05,.38,ST,0,.05,0,10);bx(g,.62,.14,.62,LT,0,.43,0);const b=bx(g,.6,.72,.12,LT,0,.55,-.32);b.rotation.x=-.18;bx(g,.34,.2,.1,LT,0,1.2,-.35);bx(g,.1,.1,.55,DS,-.36,.6,0);bx(g,.1,.1,.55,DS,.36,.6,0);bx(g,.4,.04,.3,ST,0,.18,.5);cy(g,.02,.3,ST,0,.1,.38,8)},
+miroir:(g)=>{bx(g,.72,1.72,.05,WDd,0,.05,-.2);bx(g,.62,1.6,.02,MPh(0xcfe8f5,140,0xffffff),0,.11,-.17);bx(g,.1,.05,.35,WDd,-.28,0,-.05);bx(g,.1,.05,.35,WDd,.28,0,-.05)},
+tapis:(g,w,h)=>{bx(g,w*.78,.18,h*.94,GY,0,0,0.0);bx(g,w*.62,.03,h*.82,BK,0,.18,.04);[-1,1].forEach(a=>{bx(g,.07,.08,h*.8,DS,a*w*.34,.18,.04);bx(g,.04,1.05,.04,ST,a*w*.33,.18,-h*.34)});bx(g,w*.7,.3,.14,BK,0,1.15,-h*.34);bx(g,w*.55,.18,.01,SCR,0,1.2,-h*.265);hcy(g,.02,w*.66,ST,0,1.0,-h*.36,'x')},
+velo:(g,w,h)=>{bx(g,.1,.05,h*.9,DS,0,0,0);bx(g,.5,.05,.1,DS,0,0,h*.4);bx(g,.5,.05,.1,DS,0,0,-h*.4);const f=cy(g,.26,.1,ML(0x2d3239),0,.4,-h*.3,22);f.rotation.z=Math.PI/2;cy(g,.03,.8,DS,0,.05,-h*.1,8).rotation.x=.4;cy(g,.025,.75,ST,0,.35,h*.25,8);bx(g,.26,.07,.22,BK,0,1.05,h*.27);cy(g,.025,.8,ST,0,.4,-h*.38,8);hcy(g,.02,.5,BK,0,1.18,-h*.4,'x');bx(g,.16,.08,.03,SCR,0,1.22,-h*.36)},
+banc:(g,w,h)=>{bx(g,w*.6,.14,.42,BK,-w*.12,.42,0);legs4(g,w*.5,.3,.42,.03,DS);[-1,1].forEach(a=>bx(g,.05,.9,.05,DS,w*.34+a*.0,0,a*.2));hcy(g,.025,w*.92,ST,w*.05,1.0,0,'x');[-1,1].forEach(a=>{cy(g,.2,.05,BK,w*.05+a*w*.38,.8,0,18).rotation.z=Math.PI/2;});bx(g,.06,.06,.5,DS,w*.34,.88,0)},
+poubelle:(g)=>{cy(g,.22,.7,GY,0,0,0,16,.25);cy(g,.26,.05,DS,0,.7,0,16);bx(g,.1,.04,.05,DS,0,.03,.22)},
+eclairage:(g)=>{cy(g,.2,.04,BK,0,0,0,16);cy(g,.02,1.55,ST,0,.04,0,8);cy(g,.22,.3,MEm(0xfff0c8),0,1.55,0,18,.14);sph(g,.05,MEm(0xffffff),0,1.7,0)},
+etabli:(g,w,h)=>{legs4(g,w,h,.85,.04,DS);bx(g,w*.97,.08,h*.92,WD,0,.85,0);bx(g,w*.9,.04,h*.8,GY,0,.28,0);bx(g,.16,.1,.1,RD,-w*.35,.93,.1);bx(g,w*.94,.75,.03,ML(0x4a5560),0,.95,-h*.46);const r=rg(3);for(let i=0;i<7;i++)bx(g,.05,.2+r()*.2,.02,ML(PROD[Math.floor(r()*8)]),-w*.4+i*w*.13,1.15,-h*.44)},
+outils:(g)=>{bx(g,.62,.46,.38,RD,0,0,0);[0,1,2].forEach(i=>bx(g,.56,.02,.01,BK,0,.1+i*.12,.195));bx(g,.5,.04,.1,DS,0,.5,0);bx(g,.1,.03,.1,BK,0,.46,.2)},
+lit:(g,w,h)=>{bx(g,w*.96,.3,h*.96,WDd,0,0,0);bx(g,w*.9,.22,h*.9,WHp,0,.3,0);bx(g,w*.9,.05,h*.55,ML(0x3e6a9e),0,.52,h*.18);bx(g,w*.4,.14,.34,WH,-w*.22,.52,-h*.3);bx(g,w*.4,.14,.34,WH,w*.22,.52,-h*.3);bx(g,w*.96,.85,.08,WDl,0,.3,-h*.47)},
+reception:(g,w,h)=>{bx(g,w*.97,1.05,h*.6,WD,0,0,h*.15);bx(g,w,.05,h*.85,ML(0xe6e3dc),0,1.05,h*.05);bx(g,w*.9,.9,.04,WDl,0,0,h*.45);cy(g,.06,.04,YL,w*.3,1.1,.1,14);bx(g,.4,.26,.03,BK,-w*.2,1.3,-h*.05);bx(g,.36,.22,.01,SCR,-w*.2,1.32,-h*.035);bx(g,w*.4,.08,.02,YL,0,1.05,h*.42)},
+palette:(g,w,h)=>{[[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([a,b])=>bx(g,.07,2.5,.07,BLm,a*(w/2-.05),0,b*(h/2-.05)));const r=rg(2);[.28,1.12,1.96].forEach((y,k)=>{[-1,1].forEach(b=>bx(g,w*.95,.1,.06,OR,0,y,b*(h/2-.05)));[-1,1].forEach(a=>{bx(g,.5,.12,h*.85,WD,a*w*.24,y+.1,0);for(let q=0;q<2;q++)bx(g,.42,.4+r()*.25,h*.35,CD,a*w*.24,y+.22,(q?1:-1)*h*.2)})})},
+transpal:(g)=>{[-1,1].forEach(a=>bx(g,.12,.07,.95,YL,a*.22,.04,.1));bx(g,.6,.08,.15,YL,0,.04,-.35);cy(g,.025,1.05,DS,0,.1,-.4,8).rotation.x=.35;bx(g,.3,.05,.06,RD,0,1.16,-.55);[-1,1].forEach(a=>cy(g,.05,.05,BK,a*.22,0,.5,10))},
+machine:(g,w,h)=>{bx(g,w*.95,.5,h*.92,DS,0,0,0);bx(g,w*.55,1.3,h*.7,ML(0x3d6a8f),-w*.12,.5,0);bx(g,w*.57,.04,h*.72,BK,-w*.12,1.8,0);cy(g,.38,.8,OR,-w*.12,1.84,0,18);bx(g,w*.22,1.4,h*.55,YL,w*.33,.5,0);bx(g,.3,.2,.02,SCR,w*.33,1.35,h*.28);[0,1,2].forEach(i=>cy(g,.04,.06,i?GRm:RD,w*.28+i*.1,1.1,h*.28,8));hcy(g,.07,w*.5,ST,-w*.1,2.55,0,'x');bx(g,w*.55,.08,.02,YL,-w*.12,.3,h*.46)},
+convoyeur:(g,w,h)=>{bx(g,w*.97,.1,h*.75,MPh(0x25282d,30),0,.72,0);[-1,1].forEach(b=>bx(g,w,.14,.06,ST,0,.7,b*h*.4));for(let i=0;i<14;i++)hcy(g,.035,h*.72,DS,-w*.46+i*w*.92/13,.8,0,'z');[-1,-.4,.4,1].forEach(a=>[-1,1].forEach(b=>cy(g,.04,.7,DS,a*w*.45,0,b*h*.38,8)));const r=rg(8);for(let i=0;i<3;i++)bx(g,.45,.3+r()*.15,.4,CD,-w*.3+i*w*.28,.85,0)}};
+function makeModel(id,r){const it=ITEMS[id],w=it[2],h=it[3],g=new THREE.Group();(MODELS[id]||((G2,w2,h2)=>bx(G2,w2*.9,.8,h2*.9,GY,0,0,0)))(g,w,h);const out=new THREE.Group(),W=r?h:w,H=r?w:h;g.rotation.y=r?Math.PI/2:0;out.add(g);out.userData={W,H};return out}
+
+</script>
+<script>
+// ===== Empire Ambitions — Phase 9b : éditeur d'aménagement 3D =====
+const ED={on:false,scene:null,cam:new THREE.PerspectiveCamera(48,innerWidth/innerHeight,.1,300),id:null,g:null,sel:null,r:0,yaw:.35,pitch:.95,dist:22,tgt:new THREE.Vector3(),cell:null,itemsG:null,walls:[],ghost:null,people:[],hover:-1,tab:'furn',hov:null,t:0,mx:0,my:0};
+window.__ed=ED;
+const RAY=new THREE.Raycaster(),FLOORP=new THREE.Plane(new THREE.Vector3(0,1,0),0);
+const FLK={resto:'tile',trad:'wood',cafe:'tile',habit:'wood',coif:'wood2',bur:'carpet',sport:'rubber',epic:'tile',elec:'polish',meub:'wood',repar:'concrete',hotel:'carpet2',entrep:'concrete',gros:'concrete',indus:'concrete'};
+const WALLC={resto:0xe8d8b8,trad:0xd9c3a0,cafe:0xefe2cf,habit:0xe9e4f0,coif:0xdfeaf0,bur:0xe6e8ea,sport:0xdde4ec,epic:0xf0efe4,elec:0xe3e8ee,meub:0xf0e8dc,repar:0xd8d8d2,hotel:0xece3d6,entrep:0xd4d6d8,gros:0xd4d6d8,indus:0xc9ccd0};
+const floorTex={};
+function floorTexture(k,w,h){const c=mkc(128,128),x=c.getContext('2d');
+ if(k==='tile'){for(let i=0;i<2;i++)for(let j=0;j<2;j++){x.fillStyle=(i+j)%2?'#d9d6cf':'#b8b4aa';x.fillRect(i*64,j*64,64,64)}x.strokeStyle='rgba(0,0,0,.18)';x.strokeRect(0,0,128,128);x.strokeRect(0,0,64,64)}
+ else if(k==='wood'||k==='wood2'){const base=k==='wood'?[168,120,70]:[205,170,120];for(let i=0;i<8;i++){const d=(Math.random()-.5)*22;x.fillStyle=`rgb(${base[0]+d},${base[1]+d},${base[2]+d})`;x.fillRect(0,i*16,128,16);x.fillStyle='rgba(0,0,0,.25)';x.fillRect(0,i*16,128,1);for(let j=0;j<3;j++)x.fillRect(Math.random()*128,i*16,1,16)}}
+ else if(k==='carpet'||k==='carpet2'){x.fillStyle=k==='carpet'?'#6a7482':'#8a6a5e';x.fillRect(0,0,128,128);for(let i=0;i<1400;i++){x.fillStyle=`rgba(${Math.random()<.5?0:255},${Math.random()<.5?0:255},${Math.random()<.5?0:255},.07)`;x.fillRect(Math.random()*128,Math.random()*128,2,2)}}
+ else if(k==='rubber'){x.fillStyle='#34383e';x.fillRect(0,0,128,128);for(let i=0;i<500;i++){x.fillStyle='rgba(255,255,255,.05)';x.fillRect(Math.random()*128,Math.random()*128,3,1)}x.strokeStyle='rgba(255,255,255,.12)';x.strokeRect(0,0,128,128)}
+ else if(k==='polish'){x.fillStyle='#cfd2d6';x.fillRect(0,0,128,128);x.strokeStyle='rgba(0,0,0,.12)';x.strokeRect(0,0,128,128)}
+ else{x.fillStyle='#8f9296';x.fillRect(0,0,128,128);for(let i=0;i<900;i++){const v=Math.random()<.5?0:255;x.fillStyle=`rgba(${v},${v},${v},.06)`;x.fillRect(Math.random()*128,Math.random()*128,3,3)}x.strokeStyle='rgba(0,0,0,.25)';x.strokeRect(0,0,128,128)}
+ const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(w/2,h/2);t.anisotropy=4;return t}
+function signTexture(txt){const c=mkc(512,96),x=c.getContext('2d');x.fillStyle='#1e2a44';x.fillRect(0,0,512,96);x.strokeStyle='#f2c230';x.lineWidth=5;x.strokeRect(5,5,502,86);x.fillStyle='#fff';x.font='bold 40px system-ui,sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText(txt,256,50,470);return new THREE.CanvasTexture(c)}
+// ---------- construction de la pièce ----------
+function edBuildScene(){const z=G.biz[ED.id],g=ED.g,b=buildings[ED.id],sc=new THREE.Scene();sc.background=new THREE.Color(0x1a2132);
+ sc.add(new THREE.HemisphereLight(0xffffff,0x8a7a6a,.85));const d=new THREE.DirectionalLight(0xfff3dc,.85);d.position.set(g.w*.3,16,g.h*1.3);d.target.position.set(g.w/2,0,g.h/2);d.castShadow=true;d.shadow.mapSize.set(2048,2048);Object.assign(d.shadow.camera,{left:-g.w,right:g.w,top:g.h,bottom:-g.h,near:1,far:60});d.shadow.bias=-.0005;sc.add(d,d.target);
+ const fl=new THREE.Mesh(new THREE.PlaneGeometry(g.w,g.h),new THREE.MeshLambertMaterial({map:floorTexture(FLK[z.s]||'tile',g.w,g.h)}));fl.rotation.x=-Math.PI/2;fl.position.set(g.w/2,0,g.h/2);fl.receiveShadow=true;sc.add(fl);
+ const out=new THREE.Mesh(new THREE.PlaneGeometry(120,120),new THREE.MeshLambertMaterial({color:0x2a3040}));out.rotation.x=-Math.PI/2;out.position.set(g.w/2,-.05,g.h/2);sc.add(out);
+ const side=new THREE.Mesh(new THREE.PlaneGeometry(g.w+16,6),new THREE.MeshLambertMaterial({color:0x6e6f72}));side.rotation.x=-Math.PI/2;side.position.set(g.w/2,-.02,g.h+3.2);sc.add(side);
+ // grille
+ const pts=[];for(let i=0;i<=g.w;i++)pts.push(i,.015,0,i,.015,g.h);for(let j=0;j<=g.h;j++)pts.push(0,.015,j,g.w,.015,j);const gg=new THREE.BufferGeometry();gg.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));sc.add(new THREE.LineSegments(gg,new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:.1})));
+ // murs avec coupe automatique
+ const wc=WALLC[z.s]||0xe4e4e4,wm=ML(wc),base=ML(0x55575c),H=3.2,T=.22;ED.walls=[];
+ const wall=(nx,nz,parts)=>{const grp=new THREE.Group();parts.forEach(([sx,sy,sz,px,py,pz,m])=>{const o=new THREE.Mesh(BOXG,m||wm);o.scale.set(sx,sy,sz);o.position.set(px,py,pz);o.castShadow=o.receiveShadow=true;grp.add(o)});sc.add(grp);ED.walls.push({grp,n:new THREE.Vector3(nx,0,nz)})};
+ const m=Math.floor(g.w/2),dw=2;
+ wall(0,-1,[[g.w+T*2,H,T,g.w/2,H/2,-T/2],[g.w,.18,.05,g.w/2,.09,.03,base]]);
+ wall(-1,0,[[T,H,g.h,-T/2,H/2,g.h/2],[.05,.18,g.h,.03,.09,g.h/2,base]]);
+ wall(1,0,[[T,H,g.h,g.w+T/2,H/2,g.h/2],[.05,.18,g.h,g.w-.03,.09,g.h/2,base]]);
+ wall(0,1,[[m-1,H,T,(m-1)/2,H/2,g.h+T/2],[g.w-m-1,H,T,m+1+(g.w-m-1)/2,H/2,g.h+T/2],[dw,H-2.4,T,m,2.4+(H-2.4)/2,g.h+T/2],[dw+.2,.08,.3,m,.04,g.h+.1,ML(0x2b2d33)]]);
+ // fenêtres + enseigne sur le mur du fond
+ const nW=Math.max(2,Math.floor(g.w/5));for(let i=0;i<nW;i++){const x=(i+.5)*g.w/nW;const f=new THREE.Mesh(BOXG,ML(0xdfe6ee));f.scale.set(2.2,1.3,.06);f.position.set(x,1.9,.03);sc.add(f);const gl=new THREE.Mesh(BOXG,MEm(0xbfe3ff));gl.scale.set(2.0,1.1,.04);gl.position.set(x,1.9,.07);sc.add(gl)}
+ const sg=new THREE.Mesh(new THREE.PlaneGeometry(Math.min(g.w*.6,7),1.0),new THREE.MeshBasicMaterial({map:signTexture(clean(z.name)),toneMapped:false}));sg.position.set(g.w/2,2.95,.12);sc.add(sg);
+ // porte et tapis d'entrée
+ const door=new THREE.Mesh(BOXG,ML(0x23995a));door.scale.set(dw,.03,1);door.position.set(m,.02,g.h-.5);sc.add(door);
+ const mat=new THREE.Mesh(BOXG,ML(0x3b2f2a));mat.scale.set(dw*.85,.025,.7);mat.position.set(m,.04,g.h-.55);sc.add(mat);
+ ED.itemsG=new THREE.Group();sc.add(ED.itemsG);ED.scene=sc;ED.room=fl;
+ // marqueur du survol
+ const hl=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1,1,1)),new THREE.LineBasicMaterial({color:0xffe14d}));hl.visible=false;sc.add(hl);ED.hl=hl}
+function edPeople(){ED.people.forEach(p=>ED.scene.remove(p.o));ED.people=[];const z=G.biz[ED.id],g=ED.g,e=ensureEmps(z),n=Math.min(e.length,6),cols=[0x2d6aa8,0x3f8a4c,0xb5412f,0x7a3b8f,0x2a8a8a,0xc9941a];
+ const mk=(col)=>{const o=new THREE.Group(),sk=ML(0xe0b894);cy(o,.07,.8,ML(0x2a2f3a),-.1,0,0,8);cy(o,.07,.8,ML(0x2a2f3a),.1,0,0,8);cy(o,.2,.7,ML(col),0,.8,0,10,.17);sph(o,.15,sk,0,1.62,0);cy(o,.05,.55,sk,-.27,.9,0,8);cy(o,.05,.55,sk,.27,.9,0,8);o.scale.setScalar(.95);return o};
+ const free=()=>{const oc=occ(z,g);const l=[];for(let y=0;y<g.h-2;y++)for(let x=0;x<g.w;x++)if(oc[y][x]===-1)l.push([x+.5,y+.5]);return l};
+ const fr=free();if(!fr.length)return;const addP=(col,cust)=>{const o=mk(col);ED.scene.add(o);const p=fr[Math.floor(Math.random()*fr.length)];ED.people.push({o,x:p[0],z:p[1],tx:p[0],tz:p[1],cust,wait:Math.random()*2});o.position.set(p[0],0,p[1])};
+ for(let i=0;i<n;i++)addP(cols[i%6],0);if(z.open)for(let i=0;i<3;i++)addP([0xd8c3a0,0x6b7a8f,0xa05a6a][i],1)}
+function edRefresh(){const z=G.biz[ED.id],g=ED.g;while(ED.itemsG.children.length)ED.itemsG.remove(ED.itemsG.children[0]);
+ z.layout.forEach((p,i)=>{const m=makeModel(p.id,p.r),W=m.userData.W,H=m.userData.H;m.position.set(p.x+W/2,0,p.y+H/2);m.userData.idx=i;const br=z.broken&&0;ED.itemsG.add(m)});edPeople()}
+// ---------- caméra ----------
+function edCamUpdate(){const c=ED.cam,p=ED.pitch,y=ED.yaw,d=ED.dist;c.position.set(ED.tgt.x+Math.sin(y)*Math.cos(p)*d,ED.tgt.y+Math.sin(p)*d,ED.tgt.z+Math.cos(y)*Math.cos(p)*d);c.lookAt(ED.tgt);
+ ED.walls.forEach(w=>{const to=new THREE.Vector3().subVectors(c.position,ED.tgt);w.grp.visible=w.n.dot(to)<=Math.max(.6,ED.g.w*.1)||ED.pitch>1.3})}
+function edTick(dt){if(!ED.on)return;ED.t+=dt;const c=ED.cam;if(Math.abs(c.aspect-innerWidth/innerHeight)>.001){c.aspect=innerWidth/innerHeight;c.updateProjectionMatrix()}edCamUpdate();
+ ED.people.forEach(p=>{const dx=p.tx-p.x,dz=p.tz-p.z,L=Math.hypot(dx,dz);if(L<.1){p.wait-=dt;if(p.wait<=0){const z=G.biz[ED.id],g=ED.g,oc=occ(z,g);for(let k=0;k<8;k++){const x=Math.floor(Math.random()*g.w),y=Math.floor(Math.random()*(g.h-1));if(oc[y][x]===-1){p.tx=x+.5;p.tz=y+.5;break}}p.wait=1+Math.random()*3}}else{const s=(p.cust?.9:.7)*dt;p.x+=dx/L*s;p.z+=dz/L*s;p.o.rotation.y=Math.atan2(dx,dz);p.o.position.y=Math.abs(Math.sin(ED.t*8))*.04}p.o.position.x=p.x;p.o.position.z=p.z});
+ if(ED.ghost)ED.ghost.rotation.y=0}
+// ---------- interaction ----------
+function edCellFromEvent(e){const r=$('edv').getBoundingClientRect(),n=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1);RAY.setFromCamera(n,ED.cam);const p=new THREE.Vector3();return{pt:RAY.ray.intersectPlane(FLOORP,p)?p:null,n}}
+function edPickItem(n){RAY.setFromCamera(n,ED.cam);const hits=RAY.intersectObjects(ED.itemsG.children,true);if(!hits.length)return -1;let o=hits[0].object;while(o&&o.userData.idx===undefined)o=o.parent;return o?o.userData.idx:-1}
+function edGhost(){if(ED.ghost){ED.scene.remove(ED.ghost);ED.ghost=null}if(!ED.sel)return;const z=G.biz[ED.id],m=makeModel(ED.sel,ED.r),ok=ED.cell&&canPlace(ED.g,ED.sel,ED.cell[0],ED.cell[1],ED.r,occ(z,ED.g)),col=ok?0x44ff99:0xff5555,gm=new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:.55,depthWrite:false});
+ m.traverse(o=>{if(o.isMesh)o.material=gm;o.castShadow=false});const W=m.userData.W,H=m.userData.H,fp=new THREE.Mesh(new THREE.PlaneGeometry(W,H),new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:.35,depthWrite:false}));fp.rotation.x=-Math.PI/2;fp.position.y=.03;m.add(fp);m.userData.ok=ok;
+ const c=ED.cell||[0,0];m.position.set(c[0]+W/2,0,c[1]+H/2);m.visible=!!ED.cell;ED.scene.add(m);ED.ghost=m}
+function edMove(e){const{pt,n}=edCellFromEvent(e);ED.mx=e.clientX;ED.my=e.clientY;
+ if(ED.drag){const dx=e.clientX-ED.drag.x,dy=e.clientY-ED.drag.y;if(Math.abs(dx)+Math.abs(dy)>4)ED.drag.moved=true;if(ED.drag.moved){ED.yaw-=dx*.006;ED.pitch=Math.max(.25,Math.min(1.5,ED.pitch+dy*.005));ED.drag.x=e.clientX;ED.drag.y=e.clientY}return}
+ if(ED.sel){if(pt){const[W,H]=dimsOf(ED.sel,ED.r),x=Math.max(0,Math.min(ED.g.w-W,Math.round(pt.x-W/2))),y=Math.max(0,Math.min(ED.g.h-H,Math.round(pt.z-H/2)));if(!ED.cell||ED.cell[0]!==x||ED.cell[1]!==y){ED.cell=[x,y];edGhost()}}else{ED.cell=null;edGhost()}}
+ else{const i=edPickItem(n);if(i!==ED.hover){ED.hover=i;const z=G.biz[ED.id];if(i>=0){const p=z.layout[i],[W,H]=dimsOf(p.id,p.r);ED.hl.scale.set(W+.06,1.9,H+.06);ED.hl.position.set(p.x+W/2,.95,p.y+H/2);ED.hl.visible=true;edTip(ITEMS[p.id][0]+' — clic : déplacer · clic droit : reprendre')}else{ED.hl.visible=false;edTip('')}}}}
+function edTip(t){const e=$('edtip');if(e)e.textContent=t}
+function edDown(e){ED.drag={x:e.clientX,y:e.clientY,moved:false,btn:e.button};e.target.setPointerCapture&&e.target.setPointerCapture(e.pointerId)}
+function edUp(e){const d=ED.drag;ED.drag=null;if(!d||d.moved)return;const{n}=edCellFromEvent(e),z=G.biz[ED.id];
+ if(d.btn===2||d.btn===1){if(ED.sel){edSel(null);return}const i=edPickItem(n);if(i>=0)edTake(i);return}
+ if(ED.sel){if(ED.cell&&canPlace(ED.g,ED.sel,ED.cell[0],ED.cell[1],ED.r,occ(z,ED.g))&&z.inv[ED.sel]>0){z.layout.push({id:ED.sel,x:ED.cell[0],y:ED.cell[1],r:ED.r});z.inv[ED.sel]--;save();edRefresh();if(!z.inv[ED.sel])ED.sel=null;ED.cell=null;edGhost();edUI()}else toast('Placement impossible (collision, limite ou porte)');return}
+ const i=edPickItem(n);if(i>=0){const p=z.layout[i];edTake(i);ED.sel=p.id;ED.r=p.r;edGhost();edUI()}}
+function edTake(i){const z=G.biz[ED.id],p=z.layout.splice(i,1)[0];z.inv[p.id]=(z.inv[p.id]||0)+1;ED.hover=-1;ED.hl.visible=false;save();edRefresh();edUI()}
+function edWheel(e){e.preventDefault();ED.dist=Math.max(5,Math.min(60,ED.dist*(e.deltaY>0?1.1:.9)))}
+function edKey(e){if(!ED.on)return;if(e.key==='r'||e.key==='R')edRot();else if(e.key==='Escape'){if(ED.sel)edSel(null);else edDone()}else if((e.key==='Delete'||e.key==='Backspace')&&ED.hover>=0)edTake(ED.hover)}
+// ---------- actions ----------
+function edSel(k){ED.sel=k;ED.cell=null;edGhost();edUI()}
+function edRot(){ED.r=1-ED.r;if(ED.sel){const[W,H]=dimsOf(ED.sel,ED.r);if(ED.cell){ED.cell[0]=Math.min(ED.cell[0],ED.g.w-W);ED.cell[1]=Math.min(ED.cell[1],ED.g.h-H)}edGhost()}}
+function edYaw(d){ED.yaw+=d}
+function edView(){ED.pitch=ED.pitch>1.2?.95:1.5}
+function edTab(t){ED.tab=t;edUI()}
+function edAuto(){const z=G.biz[ED.id];let n=0;Object.keys(z.inv).forEach(k=>{while(z.inv[k]>0&&autoFit(z,ED.g,k)){z.inv[k]--;n++}});save();edRefresh();edUI();toast(n?`🪄 ${n} objet(s) placé(s) automatiquement`:'Rien à placer (ou plus de place)')}
+function edAll(){const z=G.biz[ED.id];z.layout.splice(0).forEach(p=>z.inv[p.id]=(z.inv[p.id]||0)+1);save();edRefresh();edUI()}
+function edBuy(i){catB=ED.id;buyItem(i,0);edUI()}
+function edOpenBiz(){const z=G.biz[ED.id];if(reqs(ED.id).every(x=>x.ok)){z.open=true;save();toast('🏪 '+z.name+' est ouverte !');edPeople();edUI()}}
+function edDone(){ED.on=false;$('ed').style.display='none';document.removeEventListener('keydown',edKey);if(inGame)uiPause=false;const id=ED.id;ED.sel=null;bizModal(id)}
+// ---------- interface ----------
+function edUI(){const z=G.biz[ED.id],g=ED.g,s=SECT[z.s],cnt={};z.layout.forEach(p=>cnt[p.id]=(cnt[p.id]||0)+1);const inv=Object.entries(z.inv).filter(e=>e[1]>0),r=reqs(ED.id),all=r.every(x=>x.ok);
+ const tabs=[['furn','🪑 Mobilier'],['sup','📦 Fournitures'],['shop','🛒 Boutique']].map(([k,l])=>`<button class="${ED.tab===k?'on':'sec'}" onclick="edTab('${k}')">${l}</button>`).join('');
+ let body='';
+ if(ED.tab==='furn'){body=`<b>Inventaire (non installé)</b><div>${inv.map(([k,n])=>`<button class="${ED.sel===k?'on':'sec'}" style="display:block;width:100%;text-align:left;margin:2px 0" onclick="edSel('${k}')">${ITEMS[k][0]} <b>×${n}</b> <small>(${ITEMS[k][2]}×${ITEMS[k][3]})</small></button>`).join('')||'<small>Inventaire vide. Commandez du matériel (onglet Boutique) ou reprenez des objets installés.</small>'}</div>
+  <b style="display:block;margin-top:8px">Installé dans le local (${z.layout.length})</b><table>${Object.entries(cnt).map(([k,n])=>`<tr><td>${ITEMS[k][0]}</td><td>${n}${s.req[k]?` / ${s.req[k]} requis`:''}</td></tr>`).join('')||'<tr><td>Rien d\'installé</td></tr>'}</table>
+  ${(z.orders||[]).length?`<b style="display:block;margin-top:8px">🚚 En livraison</b><table>${z.orders.map(o=>`<tr><td>${ITEMS[o.i][0]}</td><td>jour ${o.due}</td></tr>`).join('')}</table>`:''}`}
+ else if(ED.tab==='sup'){const sv=typeof SUP!=='undefined'?Object.entries(z.sup||{}).filter(e=>e[1]>=1):[];body=`<b>Fournitures en stock</b><table>${sv.map(([k,u])=>`<tr><td>${SUP[k][0]}</td><td>${Math.floor(u)}</td></tr>`).join('')||'<tr><td>Aucune fourniture spécifique</td></tr>'}<tr><td><b>Valeur totale du stock</b></td><td><b>${fmt(z.stock)}</b></td></tr></table><div class="row"><button class="sec" onclick="supCat(${ED.id},0)">Commander des fournitures</button></div><small>Même inventaire que l'écran 🎒 Inventaire.</small>`}
+ else{body=`<b>Commander du matériel</b><small style="display:block">Livraison en 2 jours (+4 %). Le matériel arrive dans l'inventaire.</small><table>${Object.entries(ITEMS).map(([k,it])=>{const p=it[1],f=typeof feeOf==='function'?feeOf(p):Math.max(20,Math.round(p*.04));return`<tr><td>${it[0]}<br><small>${it[2]}×${it[3]}${s.req[k]?' · requis':''}</small></td><td>${fmt(p+f)}</td><td><button ${G.money<p+f?'disabled':''} onclick="edBuy('${k}')">+</button></td></tr>`}).join('')}</table>`}
+ $('edleft').innerHTML=`<div class="row" style="margin-bottom:6px">${tabs}</div><div style="max-height:calc(100vh - 160px);overflow:auto">${body}</div>`;
+ $('edright').innerHTML=`<b>Conditions d'ouverture</b>${r.map(x=>`<div>${x.ok?'✅':'❌'} ${x.t}</div>`).join('')}${z.open?'<div style="color:#f5c542;margin-top:6px">⚠ Entreprise ouverte : retirer un équipement obligatoire la fermera.</div>':all?`<div class="row"><button class="grn" onclick="edOpenBiz()">🏪 Ouvrir l'entreprise</button></div>`:''}
+ <hr style="border-color:#2c3550"><small>🖱 Clic : placer / déplacer<br>🖱 Clic droit : reprendre · glisser : tourner la vue<br>⌨ R : pivoter · Échap : annuler<br>Molette : zoom</small><div id="edtip" style="margin-top:6px;color:#8fd3ff;min-height:32px"></div>`}
+function edOpen(id){const b=buildings[id],z=G.biz[id];ensureEmps(z);ED.id=id;ED.g=gridOf(b);ED.sel=null;ED.r=0;ED.cell=null;ED.hover=-1;ED.tab='furn';ED.yaw=.35;ED.pitch=.95;ED.dist=Math.max(ED.g.w,ED.g.h)*1.05+6;ED.tgt.set(ED.g.w/2,0,ED.g.h/2);
+ let el=$('ed');if(!el){el=document.createElement('div');el.id='ed';el.style.cssText='position:fixed;inset:0;z-index:30;display:none;font-size:14px;color:#e8ecf8';
+  el.innerHTML=`<div id="edv" style="position:absolute;inset:0;touch-action:none;cursor:crosshair"></div>
+  <div id="edtop" style="position:absolute;top:8px;left:50%;transform:translateX(-50%);display:flex;gap:6px;flex-wrap:wrap;justify-content:center;background:#141b30e6;border:1px solid #2c3550;border-radius:10px;padding:6px 8px;max-width:96vw"></div>
+  <div id="edleft" style="position:absolute;top:8px;left:8px;width:250px;max-height:calc(100vh - 16px);background:#141b30ea;border:1px solid #2c3550;border-radius:10px;padding:8px;margin-top:56px"></div>
+  <div id="edright" style="position:absolute;top:64px;right:8px;width:250px;background:#141b30ea;border:1px solid #2c3550;border-radius:10px;padding:8px"></div>`;$('game').parentNode.appendChild(el);
+  const v=$('edv');v.addEventListener('pointermove',edMove);v.addEventListener('pointerdown',edDown);v.addEventListener('pointerup',edUp);v.addEventListener('wheel',edWheel,{passive:false});v.addEventListener('contextmenu',e=>e.preventDefault())}
+ $('edtop').innerHTML=`<b style="align-self:center">🪑 Aménagement 3D — ${clean(z.name)}</b><button class="sec" onclick="edView()">🎥 Vue 3D / Dessus</button><button class="sec" onclick="edYaw(-.7)">↺</button><button class="sec" onclick="edYaw(.7)">↻</button><button class="sec" onclick="edRot()">🔄 Pivoter (R)</button><button class="sec" onclick="edAuto()">🪄 Placement auto</button><button class="sec" onclick="edAll()">♻ Tout reprendre</button><button class="grn" onclick="edDone()">✔ Terminer</button>`;
+ closeModal();edBuildScene();edRefresh();edUI();el.style.display='block';ED.on=true;uiPause=true;document.addEventListener('keydown',edKey);if(!ED.scene)return;edCamUpdate()}
+layoutModal=function(id){edOpen(id)};
+const _mc9=moveCars;moveCars=function(dt){if(ED.on){edTick(dt);return}_mc9(dt)};
+// l'inventaire global affiche aussi ce qui est installé (synchronisé avec l'éditeur 3D)
+const _im9=invModal;invModal=function(id){_im9(id);const z=G.biz[invId];if(!z)return;const cnt={};z.layout.forEach(p=>cnt[p.id]=(cnt[p.id]||0)+1);const s=SECT[z.s];
+ $('mbox').insertAdjacentHTML('beforeend',`<hr style="border-color:#2c3550"><b>🔗 Installé (synchronisé avec l'Aménagement 3D)</b><table>${Object.entries(cnt).map(([k,n])=>`<tr><td>${ITEMS[k][0]}</td><td>${n}${s.req[k]?' / '+s.req[k]+' requis':''}</td></tr>`).join('')||'<tr><td>Rien d\'installé</td></tr>'}</table>${(z.orders||[]).length?'<small>Mobilier en livraison : '+z.orders.map(o=>ITEMS[o.i][0]+' (jour '+o.due+')').join(', ')+'</small>':''}`)};
 
 </script>
 <script>
