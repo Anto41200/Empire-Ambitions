@@ -1447,6 +1447,91 @@ const _p3d12=p3Day;p3Day=function(){_p3d12();Object.entries(G.biz).forEach(([id,
 
 </script>
 <script>
+// ===== Empire Ambitions — Phase 13 : graphismes maximum =====
+const GFXP={low:{lab:'Bas',sh:0,dens:.4,ao:0,water:0,rain:1200,fx:0},med:{lab:'Moyen',sh:1024,dens:.7,ao:1,water:1,rain:3500,fx:1},high:{lab:'Élevé',sh:2048,dens:1,ao:1,water:1,rain:7000,fx:1},ultra:{lab:'Ultra',sh:4096,dens:1,ao:1,water:1,rain:12000,fx:1}};
+let GFX=(()=>{try{return localStorage.getItem('ea_gfx')||'high'}catch(e){return'high'}})();if(!GFXP[GFX])GFX='high';
+const TODS={mode:'auto',t:.34,rate:1/420,weather:true};
+const lerpC=(a,b,t)=>new THREE.Color(a).lerp(new THREE.Color(b),t);
+// ---------- ciel étendu : nuit en fondu et lueur de crépuscule ----------
+const skyN2=new THREE.Mesh(new THREE.SphereGeometry(3790,24,12),new THREE.MeshBasicMaterial({map:skyN,side:THREE.BackSide,transparent:true,opacity:0,fog:false,toneMapped:false,depthWrite:false}));skyN2.renderOrder=-1;scene.add(skyN2);
+const duskTex=(()=>{const c=mkc(8,256),x=c.getContext('2d'),g=x.createLinearGradient(0,0,0,256);g.addColorStop(0,'rgba(0,0,0,0)');g.addColorStop(.3,'rgba(255,110,70,0)');g.addColorStop(.46,'rgba(255,130,70,.75)');g.addColorStop(.52,'rgba(255,190,120,.95)');g.addColorStop(.6,'rgba(255,170,110,.55)');g.addColorStop(.78,'rgba(0,0,0,0)');x.fillStyle=g;x.fillRect(0,0,8,256);return new THREE.CanvasTexture(c)})();
+const skyDusk=new THREE.Mesh(new THREE.SphereGeometry(3780,24,12),new THREE.MeshBasicMaterial({map:duskTex,side:THREE.BackSide,transparent:true,opacity:0,fog:false,toneMapped:false,depthWrite:false}));skyDusk.renderOrder=-.5;scene.add(skyDusk);
+const RAIN={k:0,on:false,next:90,p:null};
+// ---------- cycle jour / nuit ----------
+function applyTOD(){const t=TODS.t,th=(t-.25)*Math.PI*2,e=Math.sin(th);let d=Math.max(0,Math.min(1,(e+.14)/.42));if(TODS.mode==='day'){d=1}else if(TODS.mode==='night'){d=0}
+ const wet=RAIN.k,dd=d*(1-.38*wet),dusk=TODS.mode==='auto'?Math.exp(-Math.pow(e/.2,2))*(1-.5*wet):0,nf=Math.max(0,Math.min(1,(.5-d)/.4));
+ night=d<.4;
+ const ey=TODS.mode==='auto'?Math.max(.16,e):(TODS.mode==='day'?.82:.5),ex=TODS.mode==='auto'?Math.cos(th):.5;
+ SUNV.set(ex*.85,ey,Math.cos(th*.5+.6)*.5+(TODS.mode==='auto'?0:.3)).normalize();
+ sun.position.set(C.t.x+SUNV.x*230,C.t.y+SUNV.y*230,C.t.z+SUNV.z*230);
+ sun.intensity=(night?.2:1.15)*(TODS.mode==='auto'?Math.max(.18,Math.min(1,d*1.1)):1)*(1-.45*wet);if(night)sun.intensity=.22;
+ sun.color.copy(night?new THREE.Color(0x8aa6ff):lerpC(0xfff3dc,0xff9a4d,Math.min(1,dusk*1.2)));
+ hemi.intensity=(.34+.42*dd);hemi.color.copy(lerpC(0x4a5c88,0xdfeaff,dd));hemi.groundColor.copy(lerpC(0x20263a,0x6a7a5a,dd));
+ const fog=lerpC(0x0e1830,0xcdddea,dd).lerp(new THREE.Color(0xf0a070),dusk*.55).lerp(new THREE.Color(0x8d98a6),wet*.5*d);scene.fog.color.copy(fog);scene.background.copy(fog);
+ scene.fog.near=520*(1-.65*wet);scene.fog.far=2100*(1-.45*wet);
+ sky.material.opacity=1;sky.material.transparent=false;skyN2.material.opacity=1-d;skyDusk.material.opacity=Math.min(1,dusk*1.1);sky.material.color.copy(lerpC(0xffffff,0x9aa4b0,wet));
+ sunDisc.visible=e>-.08&&TODS.mode!=='night';sunDisc.position.copy(SUNV).multiplyScalar(3300);sunDisc.material.color.copy(lerpC(0xfff6d8,0xff8a3d,Math.min(1,dusk*1.3)));
+ FACMATS.forEach(m=>m.emissive.setScalar(nf*.78));lampHead.emissive.set(nf>.05?0xffd27a:0x000000);if(glowMat)glowMat.opacity=.6*nf;
+ if(cloudM)cloudM.material.color.copy(lerpC(0x2a3550,0xffffff,dd).lerp(new THREE.Color(0xffb890),dusk*.5).lerp(new THREE.Color(0x8d939c),wet*.7));
+ mAsph.color.copy(lerpC(0xffffff,0x8a8d94,wet));mPav.color.copy(lerpC(0xffffff,0x9a9da4,wet));
+ if(HEADL)HEADL.material.color.copy(lerpC(0x6e675a,0xfff2c8,nf));
+ ren.toneMappingExposure=1.05+.12*dusk-.05*wet}
+const SUNV=new THREE.Vector3(.5,.8,.4);
+function setTODMode(m){TODS.mode=m;if(m==='day')TODS.t=.5;if(m==='night')TODS.t=.95;applyTOD();updGfxBtn()}
+toggleNight=function(){const order=['auto','day','night'];setTODMode(order[(order.indexOf(TODS.mode)+1)%3])};
+// ---------- pluie ----------
+function mkRain(){const n=12000,pos=new Float32Array(n*3);for(let i=0;i<n;i++){pos[i*3]=(Math.random()-.5)*110;pos[i*3+1]=Math.random()*70;pos[i*3+2]=(Math.random()-.5)*110}
+ const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos,3));RAIN.p=new THREE.Points(g,new THREE.PointsMaterial({color:0xbcd0e6,size:.55,transparent:true,opacity:0,depthWrite:false}));RAIN.p.frustumCulled=false;scene.add(RAIN.p)}
+function rainTick(dt){if(!RAIN.p)return;RAIN.next-=dt;if(RAIN.next<=0){if(TODS.weather){RAIN.on=!RAIN.on&&Math.random()<.45;RAIN.next=RAIN.on?50+Math.random()*80:70+Math.random()*130}else{RAIN.on=false;RAIN.next=30}}
+ const tgt=RAIN.on?1:0,old=RAIN.k;RAIN.k+=Math.max(-1,Math.min(1,(tgt-RAIN.k)*2))*dt/5;RAIN.k=Math.max(0,Math.min(1,RAIN.k));
+ const cnt=Math.floor(GFXP[GFX].rain*RAIN.k);RAIN.p.geometry.setDrawRange(0,cnt);RAIN.p.material.opacity=.8*Math.min(1,RAIN.k*1.5);RAIN.p.visible=cnt>0;
+ if(cnt>0){const a=RAIN.p.geometry.attributes.position,ar=a.array,sp=55*dt;for(let i=0;i<cnt;i++){let y=ar[i*3+1]-sp;if(y<0)y+=70;ar[i*3+1]=y;ar[i*3]+=5*dt;if(ar[i*3]>55)ar[i*3]-=110}a.needsUpdate=true;RAIN.p.position.set(C.t.x,Math.max(0,C.t.y-8),C.t.z)}
+ if(Math.abs(RAIN.k-old)>.002||old!==RAIN.k)TODS.dirty=1}
+// ---------- eau animée ----------
+let waterBump=null;
+function initWater(){const c=mkc(128,128),x=c.getContext('2d'),im=x.createImageData(128,128);for(let py=0;py<128;py++)for(let px=0;px<128;px++){const u=px/128,v=py/128,h=Math.sin(u*6.283*3+Math.sin(v*6.283*2)*1.6)*.5+Math.sin(v*6.283*5+u*6.283*2)*.3+Math.sin((u+v)*6.283*4)*.2,o=(py*128+px)*4,g=Math.round(128+h*110);im.data[o]=im.data[o+1]=im.data[o+2]=g;im.data[o+3]=255}x.putImageData(im,0,0);
+ waterBump=new THREE.CanvasTexture(c);waterBump.wrapS=waterBump.wrapT=THREE.RepeatWrapping;mWater.bumpMap=waterBump;mWater.bumpScale=.9;mWater.needsUpdate=true;
+ scene.traverse(o=>{if(o.isMesh&&o.material===mWater&&o.geometry.attributes.position&&!o.geometry.attributes.uv){const p=o.geometry.attributes.position,uv=new Float32Array(p.count*2);for(let i=0;i<p.count;i++){uv[i*2]=p.getX(i)*.045;uv[i*2+1]=p.getZ(i)*.045}o.geometry.setAttribute('uv',new THREE.BufferAttribute(uv,2))}})}
+// ---------- ombres de contact (occlusion ambiante) ----------
+function buildAO(){const c=mkc(64,64),x=c.getContext('2d'),g=x.createRadialGradient(32,32,10,32,32,32);g.addColorStop(0,'rgba(0,0,0,.85)');g.addColorStop(.62,'rgba(0,0,0,.5)');g.addColorStop(1,'rgba(0,0,0,0)');x.fillStyle=g;x.fillRect(0,0,64,64);
+ const m=new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(c),transparent:true,opacity:.6,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
+ AO=instSet(FLATG,m,buildings.map(b=>({x:b.x,y:.37,z:b.z,ry:b.ry,sx:b.w+5,sy:1,sz:b.d+5})),0);AO.renderOrder=1}
+let AO=null,HEADL=null,carW=null;
+// ---------- voitures : roues et phares ----------
+function mkCarExtras(){const n=CAR.length;carW=new THREE.InstancedMesh(new THREE.CylinderGeometry(.34,.34,.26,10).rotateX(Math.PI/2),new THREE.MeshLambertMaterial({color:0x151515}),n*4);carW.frustumCulled=false;scene.add(carW);
+ HEADL=new THREE.InstancedMesh(new THREE.BoxGeometry(.14,.14,.4),new THREE.MeshBasicMaterial({color:0x6e675a,toneMapped:false}),n*2);HEADL.frustumCulled=false;scene.add(HEADL)}
+const _cmx=new THREE.Matrix4(),_omx=new THREE.Matrix4(),WOFF=[[.9,.12,.8],[-.9,.12,.8],[.9,.12,-.8],[-.9,.12,-.8]];
+function carExtrasTick(){if(!carB||!carW)return;const d=GFXP[GFX].dens,n=Math.floor(CAR.length*d);for(let i=0;i<n;i++){carB.getMatrixAt(i,_cmx);const bus=CAR[i].k;for(let k=0;k<4;k++){_omx.makeTranslation((k<2?1:-1)*(bus?2.0:.8),-.22,(k%2?-1:1)*(bus?1.0:.6));carW.setMatrixAt(i*4+k,new THREE.Matrix4().multiplyMatrices(_cmx,_omx))}
+  [-1,1].forEach((s,j)=>{_omx.makeTranslation(bus?2.35:1.25,.02,s*(bus?.8:.45));HEADL.setMatrixAt(i*2+j,new THREE.Matrix4().multiplyMatrices(_cmx,_omx))})}
+ carW.count=n*4;HEADL.count=n*2;carW.instanceMatrix.needsUpdate=HEADL.instanceMatrix.needsUpdate=true}
+// ---------- préréglages ----------
+function applyGfx(){const p=GFXP[GFX],dpr=devicePixelRatio||1,r=GFX==='low'?1:GFX==='med'?Math.min(Math.max(dpr,1),1.5):GFX==='high'?Math.min(Math.max(dpr,1),2):Math.min(Math.max(dpr,1.6)*1.2,2.6);
+ ren.setPixelRatio(r);ren.setSize(innerWidth,innerHeight);
+ if(p.sh){sun.castShadow=true;sun.shadow.mapSize.set(p.sh,p.sh);if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null}}else sun.castShadow=false;
+ if(AO)AO.visible=!!p.ao;if(waterBump)waterBump.offset.set(0,0);
+ const dn=p.dens;if(carB){carB.count=carC.count=Math.max(1,Math.floor(CAR.length*dn));pedB.count=pedH.count=Math.max(1,Math.floor(PED.length*dn))}
+ try{el.style.filter=p.fx?'saturate(1.14) contrast(1.06)':'none'}catch(e){}
+ const v=$('vig');if(v)v.style.display=p.fx?'block':'none';
+ try{localStorage.setItem('ea_gfx',GFX)}catch(e){}updGfxBtn()}
+function setGfx(k){GFX=k;applyGfx();gfxModal()}
+function updGfxBtn(){const b=$('gfxb');if(b)b.textContent='⚙ '+GFXP[GFX].lab+(TODS.mode==='auto'?'':TODS.mode==='day'?' ☀':' 🌙')}
+function gfxModal(){modal(`<h2>⚙ Graphismes</h2><b>Qualité</b><div class="row" style="margin:6px 0">${Object.entries(GFXP).map(([k,v])=>`<button class="${GFX===k?'on':'sec'}" onclick="setGfx('${k}')">${v.lab}</button>`).join('')}</div><small>Bas : rapide, sans ombres. Moyen : ombres 1K. Élevé : ombres 2K, eau animée, ombres de contact. Ultra : ombres 4K, rendu suréchantillonné (demande une bonne carte graphique).</small>
+ <div style="margin-top:10px"><b>Heure de la journée</b></div><div class="row" style="margin:6px 0"><button class="${TODS.mode==='auto'?'on':'sec'}" onclick="setTODMode('auto');gfxModal()">🌅 Cycle automatique</button><button class="${TODS.mode==='day'?'on':'sec'}" onclick="setTODMode('day');gfxModal()">☀ Jour</button><button class="${TODS.mode==='night'?'on':'sec'}" onclick="setTODMode('night');gfxModal()">🌙 Nuit</button></div>
+ <div class="row"><button class="${TODS.weather?'on':'sec'}" onclick="TODS.weather=!TODS.weather;if(!TODS.weather){RAIN.on=false}gfxModal()">🌧 Météo variable : ${TODS.weather?'oui':'non'}</button><button class="sec" onclick="RAIN.on=!RAIN.on;RAIN.next=80;gfxModal()">${RAIN.on?'Arrêter la pluie':'Faire pleuvoir'}</button></div>
+ <div class="row" style="margin-top:8px"><button class="sec" onclick="closeModal()">Fermer</button></div>`)}
+// ---------- initialisation ----------
+const _roads13=roads;roads=function(){_roads13();buildAO();initWater();mkRain()};
+const _mkc13=mkCars;mkCars=function(){_mkc13();mkCarExtras();applyGfx();applyTOD()};
+let _todAcc=0;const _mc13=moveCars;moveCars=function(dt){_mc13(dt);if(window.__ed&&__ed.on)return;
+ if(TODS.mode==='auto'&&!(window.__wk&&__wk.on&&uiPause)){TODS.t=(TODS.t+dt*TODS.rate)%1}_todAcc+=dt;if(_todAcc>.2||TODS.dirty){_todAcc=0;TODS.dirty=0;applyTOD()}
+ rainTick(dt);if(waterBump){waterBump.offset.x+=dt*.012;waterBump.offset.y+=dt*.006}carExtrasTick();
+ sun.position.set(C.t.x+SUNV.x*230,C.t.y+SUNV.y*230,C.t.z+SUNV.z*230)};
+// vignette et bouton
+(()=>{const v=document.createElement('div');v.id='vig';v.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:2;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 58%,rgba(0,0,0,.34) 100%)';document.body.appendChild(v);
+ const sp=document.querySelector('#top .sp');if(sp)sp.insertAdjacentHTML('afterend','<button class="sec" id="gfxb" onclick="gfxModal()">⚙ Graphismes</button>')})();
+
+</script>
+<script>
 addEventListener('error',e=>{const m=document.getElementById('msg');if(m){m.textContent='Erreur : '+e.message;m.style.display='block'}});
 boot();
 </script>
