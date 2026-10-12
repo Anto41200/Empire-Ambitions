@@ -98,7 +98,7 @@ function paint(){buildings.forEach(b=>{b.roof.material.color.set(b.shop?'#1fd1c4
  b.body.material.opacity=b.roof.material.opacity=show?1:.12});hud()}
 // ---------- CAMÉRA & SOURIS ----------
 const C={t:new THREE.Vector3(0,0,0),yaw:.8,pitch:.9,dist:360};
-function updCam(){C.pitch=Math.max(.15,Math.min(1.5,C.pitch));C.dist=Math.max(18,Math.min(900,C.dist));
+function updCam(){C.pitch=Math.max(.15,Math.min(1.5,C.pitch));C.dist=Math.max(5,Math.min(900,C.dist));
  cam.position.set(C.t.x+C.dist*Math.cos(C.pitch)*Math.sin(C.yaw),C.dist*Math.sin(C.pitch),C.t.z+C.dist*Math.cos(C.pitch)*Math.cos(C.yaw));cam.lookAt(C.t)}
 let drag=null,moved=0,lastH=0;const el=ren.domElement,ray=new THREE.Raycaster();
 const hit=e=>{ray.setFromCamera({x:e.clientX/innerWidth*2-1,y:-(e.clientY/innerHeight)*2+1},cam);return ray.intersectObjects(meshes)[0]};
@@ -275,7 +275,7 @@ async function boot(){
 let last=performance.now(),acc=0;
 (function loop(t){requestAnimationFrame(loop);const dt=Math.min((t-last)/1000,.1);last=t;
  if(!inGame){C.yaw+=dt*.08;updCam()}
- else if(!uiPause){acc+=dt*speed;if(acc>=1.5){acc=0;G.day++;dayTick();window.p3Day&&p3Day();if(G.day%30===0)month();hud()}}
+ else if(!uiPause){acc+=dt*speed*(window.__ts||1);if(acc>=1.5){acc=0;G.day++;dayTick();window.p3Day&&p3Day();if(G.day%30===0)month();hud()}}
  if(typeof moveCars==='function')moveCars(dt);ren.render(window.__ed&&window.__ed.on?window.__ed.scene:scene,window.__ed&&window.__ed.on?window.__ed.cam:cam)})(performance.now());
 
 </script>
@@ -672,7 +672,7 @@ function p3Day(){const P=p3();let ch=false;
  Object.keys(SECT).forEach(k=>{const d=P.dem[k]||1;P.dem[k]=Math.max(.75,Math.min(1.3,d+(1-d)*.03+(Math.random()-.5)*.03))});
  Object.values(G.biz).forEach(z=>{z.rep=z.rep??50;if(z.mk&&z.mk.d>0)z.mk.d--;
   if(z.open){const bad=z.stock<=0||z.staff<SECT[z.s].staff;z.rep=Math.max(0,Math.min(100,z.rep+(bad?-.6:.12+.05*(z.train||0)+(z.q>1?.06:0)+(z.loy?.05:0))));
-   if(z.layout.length&&Math.random()<.012){const p=z.layout.splice(Math.floor(Math.random()*z.layout.length),1)[0];(z.broken=z.broken||[]).push(p.id);toast(`🔧 Panne : ${ITEMS[p.id][0]} (${z.name})`)}}
+   if(z.layout.length&&Math.random()<.012&&!(typeof hasRepair==='function'&&hasRepair(z))){const p=z.layout.splice(Math.floor(Math.random()*z.layout.length),1)[0];(z.broken=z.broken||[]).push(p.id);toast(`🔧 Panne : ${ITEMS[p.id][0]} (${z.name})`)}}
   z.orders.forEach(o=>{if(!o.dl&&o.due>G.day&&Math.random()<.12){o.dl=1;o.due+=2;toast('🚚 Retard de livraison : '+ITEMS[o.i][0])}})});
  if(P.offer&&(P.offer.until<G.day||buildings[P.offer.id].state!=='sale')){P.offer=null;ch=true}
  if(!P.offer&&Math.random()<.04){const s=buildings.filter(b=>b.state==='sale');if(s.length){const b=s[Math.floor(Math.random()*s.length)];P.offer={id:b.id,until:G.day+7};toast('💎 Offre flash −25 % : '+b.name+' (7 jours, toit rose)');ch=true}}
@@ -729,7 +729,7 @@ function feeOf(p){return hasVeh()?0:Math.max(20,Math.round(p*.04))}
 const vcap=()=>Math.max(0,...p4().veh.map(v=>VEH[v][3]));
 let netW=()=>{const P=p4();return G.money+buildings.filter(b=>G.owned.includes(b.id)).reduce((a,b)=>a+valueOf(b),0)-G.debt-P.loans.reduce((a,l)=>a+l.p,0)+(P.hold?P.hold.cash:0)};
 const _hud=hud;hud=function(){_hud();$('wealth').textContent=fmt(netW())};
-const _proj=proj;proj=function(){const p=_proj(),P=p4();P.veh.forEach(v=>p.exp+=VEH[v][2]+1900);P.loans.forEach(l=>p.exp+=l.pay);return p};
+const _proj=proj;proj=function(){const p=_proj(),P=p4();P.veh.forEach(v=>p.exp+=VEH[v][2]+(window.__wk&&window.__wk.on?0:1900));P.loans.forEach(l=>p.exp+=l.pay);return p};
 const _p3d=p3Day;p3Day=function(){_p3d();Object.values(G.biz).forEach(z=>{if(z.open)z.revM=(z.revM||0)+z.rev})};
 const _month=month;month=function(){const P=p4();let tax=0,roy=P.cities.length*2500;
  Object.values(G.biz).forEach(z=>{tax+=Math.round((z.revM||0)*(z.sub?.08:.15));z.revM=0;roy+=(z.fr||0)*400});
@@ -754,7 +754,7 @@ let T={s:null,d:null};
 function logiModal(){const P=p4(),ids=Object.keys(G.biz).map(Number);if(!ids.includes(T.s))T.s=ids[0];if(!ids.includes(T.d))T.d=ids[1]??ids[0];
  const o=sv=>ids.map(i=>`<option value="${i}" ${i===sv?'selected':''}>${G.biz[i].name}</option>`).join('');
  modal(`<h2>🚚 Logistique</h2><small>Avec un véhicule : livraisons gratuites en 1 jour et transferts de stock. Chaque véhicule coûte son entretien + un chauffeur (1 900 €/mois).</small>
- <table>${P.veh.map((v,i)=>`<tr><td>${VEH[v][0]} (capacité ${fmt(VEH[v][3])})</td><td>${fmt(VEH[v][2]+1900)}/mois</td><td><button class="red" onclick="sellVeh(${i})">Vendre</button></td></tr>`).join('')||'<tr><td>Aucun véhicule</td></tr>'}</table>
+ <table>${P.veh.map((v,i)=>`<tr><td>${VEH[v][0]} (capacité ${fmt(VEH[v][3])})</td><td>${fmt(VEH[v][2]+(window.__wk&&window.__wk.on?0:1900))}/mois</td><td><button class="red" onclick="sellVeh(${i})">Vendre</button></td></tr>`).join('')||'<tr><td>Aucun véhicule</td></tr>'}</table>
  <div class="row">${Object.entries(VEH).map(([k,v])=>`<button ${G.money<v[1]?'disabled':''} onclick="buyVeh('${k}')">${v[0]} (${fmt(v[1])})</button>`).join('')}</div><hr style="border-color:#2c3550">
  <b>Transfert de stock</b> (carburant 40 €)<div style="margin:6px 0">De <select onchange="T.s=+this.value">${o(T.s)}</select> vers <select onchange="T.d=+this.value">${o(T.d)}</select></div>
  <div class="row">${[1000,2000,5000].map(a=>`<button class="sec" onclick="transfer(${a})">${fmt(a)}</button>`).join('')}<button class="grn" onclick="bulk()">📦 Achat en gros entrepôt : +5 000 € de stock pour 4 250 €</button></div>
@@ -868,8 +868,8 @@ function dayTick(){Object.entries(G.biz).forEach(([id,biz])=>{
 // ---- événements aléatoires
 const EVENTS=[
  {w:3,run(){const o=openBiz();if(!o)return;const[i,z]=o;if(z.staff<3)return;z.strike=G.day+3;toast(`✊ Grève chez ${z.name} : fermée 3 jours`)}},
- {w:3,run(){const o=openBiz(['resto','cafe','trad','epic','hotel']);if(!o)return;const[i,z]=o;if(z.rep>=70){z.rep=Math.min(100,z.rep+4);toast(`🧑‍🍳 Inspection sanitaire réussie à ${z.name} : réputation +4`)}else{const f=300+Math.round(Math.random()*900);G.money-=f;toast(`🧑‍🍳 Inspection sanitaire à ${z.name} : amende de ${fmt(f)}`)}}},
- {w:4,run(){const o=openBiz();if(!o)return;const z=o[1];z.rep=Math.min(100,z.rep+6);toast(`📰 Article élogieux sur ${z.name} : réputation +6`)}},
+ {w:3,run(){const o=openBiz(['resto','cafe','trad','epic','hotel']);if(!o)return;const[i,z]=o;if((z.rep??50)>=70){z.rep=Math.min(100,(z.rep??50)+4);toast(`🧑‍🍳 Inspection sanitaire réussie à ${z.name} : réputation +4`)}else{const f=300+Math.round(Math.random()*900);G.money-=f;toast(`🧑‍🍳 Inspection sanitaire à ${z.name} : amende de ${fmt(f)}`)}}},
+ {w:4,run(){const o=openBiz();if(!o)return;const z=o[1];z.rep=Math.min(100,(z.rep??50)+6);toast(`📰 Article élogieux sur ${z.name} : réputation +6`)}},
  {w:2,run(){fx2().push({m:0,until:G.day,label:'Panne de courant'});toast('🔌 Panne de courant en ville : aucune vente aujourd\'hui')}},
  {w:3,run(){fx2().push({m:1.15,until:G.day+6,label:'Salon professionnel'});toast('🎪 Salon professionnel en ville : demande +15 % pendant 6 jours')}},
  {w:2,run(){fx2().push({m:.9,until:G.day+14,label:'Ralentissement'});toast('📉 Ralentissement économique : ventes −10 % pendant 14 jours')}},
@@ -917,7 +917,7 @@ document.querySelector('#top .sp').insertAdjacentHTML('afterend','<button class=
 // taux bancaires plus réalistes
 if(typeof LOANS!=='undefined'){LOANS[0][2]=.06;LOANS[1][2]=.075;LOANS[2][2]=.09}
 // ouverture automatique après création avec forfait d'équipement
-const _wok7=wizOk;wizOk=function(){const bid=W.bid,auto=W.mode==='auto';_wok7();const z=G.biz[bid];if(z&&auto&&!z.open&&reqs(bid).every(x=>x.ok)){z.open=true;save();toast('🏪 '+z.name+' est ouverte !');bizModal(bid)}};
+const _wok7=wizOk;wizOk=function(){const bid=W.bid,auto=W.mode==='auto';_wok7();const z=G.biz[bid];if(z&&z.rep==null)z.rep=50;if(z&&auto&&!z.open&&reqs(bid).every(x=>x.ok)){z.open=true;save();toast('🏪 '+z.name+' est ouverte !');bizModal(bid)}};
 
 </script>
 <script>
@@ -927,7 +927,7 @@ const LN=['Martin','Bernard','Dubois','Thomas','Robert','Petit','Durand','Leroy'
 const ROLES={resto:['Cuisinier','Serveur','Caissier'],trad:['Cuisinier','Serveur','Commis'],cafe:['Boulanger','Serveur','Caissier'],habit:['Vendeur','Caissier','Styliste'],coif:['Coiffeur','Assistant'],bur:['Conseiller','Assistant','Comptable'],sport:['Coach','Accueil','Technicien'],epic:['Caissier','Mise en rayon','Boucher'],elec:['Vendeur','Technicien','Caissier'],meub:['Vendeur','Livreur','Décorateur'],repar:['Mécanicien','Vendeur'],hotel:['Réceptionniste','Femme de chambre','Cuisinier','Portier'],entrep:['Cariste','Manutentionnaire','Logisticien'],gros:['Acheteur','Cariste','Logisticien'],indus:['Opérateur','Technicien','Cariste']};
 const mWage=sk=>1200+200*sk,rr8=(a,b)=>a+Math.random()*(b-a),pick8=a=>a[Math.floor(Math.random()*a.length)];
 let _eid=1;
-function newEmp(z,sk,fair){sk=sk||(Math.random()<.2?2:Math.random()<.65?3:4);return{id:Date.now()%1e6*10+(_eid++),n:pick8(FN)+' '+pick8(LN),role:pick8(ROLES[z.s]||['Employé']),sk,w:Math.round(mWage(sk)*(fair?1:rr8(.92,1.12))/10)*10,mood:70,d:G.day||1,mgr:0}}
+function newEmp(z,sk,fair){sk=sk||(Math.random()<.2?2:Math.random()<.65?3:4);return{id:Date.now()%1e6*10+(_eid++),n:pick8(FN)+' '+pick8(LN),role:(Math.random()<.2?'Réparateur':pick8(ROLES[z.s]||['Employé'])),sk,w:Math.round(mWage(sk)*(fair?1:rr8(.92,1.12))/10)*10,mood:70,d:G.day||1,mgr:0}}
 function ensureEmps(z){if(!z.emps){z.emps=[];for(let i=0;i<(z.staff||0);i++)z.emps.push(newEmp(z,null,true))}z.staff=z.emps.length;return z.emps}
 let wagesOf=z=>{const e=ensureEmps(z);return e.reduce((a,x)=>a+x.w+150*(z.train||0),0)};
 function empMult(z){const e=ensureEmps(z);if(!e.length)return 1;const sk=e.reduce((a,x)=>a+x.sk,0)/e.length,md=e.reduce((a,x)=>a+x.mood,0)/e.length,m=e.find(x=>x.mgr);
@@ -945,7 +945,7 @@ const _p3d8=p3Day;p3Day=function(){_p3d8();Object.entries(G.biz).forEach(([id,z]
 // historique mensuel
 const _m8=month;month=function(){Object.values(G.biz).forEach(z=>{(z.hist=z.hist||[]).push(Math.round(z.mrev||0));if(z.hist.length>12)z.hist.shift();z.mrev=0});_m8()};
 // ---- marché de l'emploi
-function candidates(z){if(!z.cand||z.candDay<G.day-30||!z.cand.length){z.cand=[];for(let i=0;i<6;i++)z.cand.push(newEmp(z,Math.random()<.15?1:Math.random()<.2?5:Math.ceil(rr8(1.6,4.6))));z.candDay=G.day}return z.cand}
+function candidates(z){if(!z.cand||z.candDay<G.day-30||!z.cand.length){z.cand=[];for(let i=0;i<6;i++)z.cand.push(newEmp(z,Math.random()<.15?1:Math.random()<.2?5:Math.ceil(rr8(1.6,4.6))));z.cand[0].role='Réparateur';z.candDay=G.day}return z.cand}
 const MOOD=m=>m>=80?'😀':m>=60?'🙂':m>=40?'😐':m>=22?'😟':'😡',STAR=n=>'★'.repeat(n)+'☆'.repeat(5-n);
 function persModal(id){const z=G.biz[id],s=SECT[z.s],e=ensureEmps(z),cand=candidates(z),avgS=e.length?(e.reduce((a,x)=>a+x.sk,0)/e.length).toFixed(1):'–',avgM=e.length?Math.round(e.reduce((a,x)=>a+x.mood,0)/e.length):0;
  modal(`<h2>👥 Personnel — ${z.name}</h2><small>${e.length} employé(s) (minimum conseillé : ${s.staff}) · masse salariale ${fmt(wagesOf(z))}/mois · compétence moyenne ${avgS}/5 · moral ${avgM}% ${MOOD(avgM)}</small>
@@ -974,7 +974,7 @@ function gestModal(id){const z=G.biz[id],b=buildings[id],h=z.hist||[],mx=Math.ma
  <div class="row"><button class="red" onclick="sellBizAsk(${id})">🏷️ Vendre l'entreprise</button><button class="sec" onclick="bizModal(${id})">Retour</button></div>`)}
 function renBiz(id){const v=clean(document.getElementById('rn').value).trim().slice(0,30);if(v){G.biz[id].name=v;save()}gestModal(id)}
 function setPrice(id,v){G.biz[id].pp=v/100;save();gestModal(id)}
-function bizValue(z){const eq=[...z.layout.map(p=>p.id),...Object.entries(z.inv).flatMap(([k,n])=>Array(n).fill(k))].reduce((a,k)=>a+ITEMS[k][1],0)*.5,h=z.hist||[],avg=h.length?h.reduce((a,b)=>a+b,0)/h.length:z.rev*30;return Math.round((eq+z.stock*.8+avg*.6*(.5+z.rep/100))/100)*100}
+function bizValue(z){const eq=[...z.layout.map(p=>p.id),...Object.entries(z.inv).flatMap(([k,n])=>Array(n).fill(k))].reduce((a,k)=>a+ITEMS[k][1],0)*.5,h=z.hist||[],avg=h.length?h.reduce((a,b)=>a+b,0)/h.length:z.rev*30;return Math.round((eq+z.stock*.8+avg*.6*(.5+(z.rep==null?50:z.rep)/100))/100)*100}
 function sellBizAsk(id){const z=G.biz[id];modal(`<h2>🏷️ Vendre ${z.name} ?</h2><p>Vous recevrez ${fmt(bizValue(z))}. Le personnel est reclassé sans frais. Le local reste à vous.</p><div class="row"><button class="red" onclick="sellBiz(${id})">Confirmer la vente</button><button class="sec" onclick="gestModal(${id})">Annuler</button></div>`)}
 function sellBiz(id){const z=G.biz[id];G.money+=bizValue(z);delete G.biz[id];save();hud();toast('🏷️ Entreprise vendue');closeModal();sel=buildings[id];show()}
 // ---- fiche entreprise : accès aux nouveaux écrans
@@ -1294,6 +1294,156 @@ const _nw=netW;netW=()=>_nw()+portfolio();
 function bourse(){const b=bs();modal(`<h2>📈 Bourse</h2><small>Portefeuille : <b>${fmt(portfolio())}</b> · dividendes de 0,3 % par mois · les cours évoluent chaque jour.</small><table>${STK.map((s,i)=>{const d=b.p[i]-b.prev[i],pl=b.own[i]?(b.p[i]*b.own[i]-b.cost[i]):0;return`<tr><td><b>${s[0]}</b><br><small>${b.own[i]} action(s) ${b.own[i]?`· ${pl>=0?'+':''}${fmt(pl)}`:''}</small></td><td>${b.p[i].toFixed(2)} € ${d>=0?'🔼':'🔽'}</td><td style="white-space:nowrap"><button ${G.money<b.p[i]?'disabled':''} onclick="stk(${i},1)">+1</button> <button ${G.money<b.p[i]*10?'disabled':''} onclick="stk(${i},10)">+10</button> <button class="sec" ${b.own[i]<1?'disabled':''} onclick="stk(${i},-1)">−1</button> <button class="sec" ${b.own[i]<10?'disabled':''} onclick="stk(${i},-10)">−10</button></td></tr>`}).join('')}</table><div class="row"><button class="sec" onclick="closeModal()">Fermer</button></div>`)}
 function stk(i,n){const b=bs(),p=b.p[i];if(n>0){if(G.money<p*n)return;G.money-=p*n;b.own[i]+=n;b.cost[i]+=p*n}else{n=Math.min(-n,b.own[i]);if(!n)return;const avg=b.cost[i]/b.own[i];G.money+=p*n;b.own[i]-=n;b.cost[i]=Math.max(0,b.cost[i]-avg*n)}save();hud();bourse()}
 document.querySelector('#top .sp').insertAdjacentHTML('afterend','<button class="sec" onclick="skillModal()">🧠 Compétences</button><button class="sec" onclick="bourse()">📈 Bourse</button>');
+
+</script>
+<script>
+// ===== Empire Ambitions — Phase 12a : mode joueur (marche, véhicules, caméra, interactions) =====
+const WK={on:false,x:0,z:0,ry:0,v:0,car:-1,yaw:.3,pitch:.5,dist:15,keys:{},poiAt:null,near:null,nearVeh:-1,gps:null,av:null,legT:0,vehs:[],ts:.06,y:.3,drag:null,dragT:0};
+window.__wk=WK;
+const wk=()=>G.wk||(G.wk={on:true,hand:[],vc:[],vp:[],x:null,z:null});
+const WKEYS={KeyW:'f',ArrowUp:'f',KeyS:'b',ArrowDown:'b',KeyA:'l',ArrowLeft:'l',KeyD:'r',ArrowRight:'r',ShiftLeft:'run',ShiftRight:'run'};
+const wkBusy=()=>!inGame||$('modal').style.display==='flex'||(window.__ed&&__ed.on);
+addEventListener('keydown',e=>{if(/INPUT|TEXTAREA|SELECT/.test((e.target.tagName||'')))return;const k=WKEYS[e.code];if(k){WK.keys[k]=true;if(WK.on&&!wkBusy())e.preventDefault()}else if(WK.on&&!wkBusy()){if(e.code==='KeyE')wkInteract();else if(e.code==='KeyF')wkVehicle()}});
+addEventListener('keyup',e=>{const k=WKEYS[e.code];if(k)WK.keys[k]=false});addEventListener('blur',()=>{WK.keys={}});
+// ---------- collisions ----------
+const WRECT=[],WBR=[];
+function wkBuildCollision(){WRECT.length=0;buildings.forEach(b=>WRECT.push({x:b.x,z:b.z,hw:b.w/2,hd:b.d/2,c:Math.cos(b.ry),s:Math.sin(b.ry),rr:Math.pow(Math.max(b.w,b.d)/2+5,2),h:b.h+.5}));
+ WBR.length=0;for(let j=0;j<9;j++){const N=CITY.V[RIVC][j],A=CITY.V[RIVC-1][j],B=CITY.V[RIVC+1][j],L=Math.hypot(B[0]-A[0],B[1]-A[1]);WBR.push({x:N[0],z:N[1],dx:(B[0]-A[0])/L,dz:(B[1]-A[1])/L,hs:hsRow(j)})}}
+function onBridge(x,z){for(const b of WBR){const rx=x-b.x,rz=z-b.z,t=rx*b.dx+rz*b.dz,l=-rx*b.dz+rz*b.dx;if(Math.abs(t)<RIVW+7&&Math.abs(l)<b.hs+.3)return true}return false}
+const inWater=(x,z)=>Math.abs(x-RIV(z))<RIVW-.4&&!onBridge(x,z);
+function inBlock(x,z){for(const b of CITY.blocks)if(inPoly(b.P,x,z))return true;return false}
+function wkBlocked(x,z,r,veh){const R=CITY.R+70;if(x*x+z*z>R*R)return true;if(inWater(x,z))return true;if(veh&&inBlock(x,z)&&!onBridge(x,z))return true;
+ for(const q of WRECT){const dx=x-q.x,dz=z-q.z;if(dx*dx+dz*dz>q.rr)continue;const lx=dx*q.c-dz*q.s,lz=dx*q.s+dz*q.c,cx=Math.max(-q.hw,Math.min(q.hw,lx)),cz=Math.max(-q.hd,Math.min(q.hd,lz));if((lx-cx)*(lx-cx)+(lz-cz)*(lz-cz)<r*r)return true}return false}
+function camInside(x,y,z){for(const q of WRECT){const dx=x-q.x,dz=z-q.z;if(dx*dx+dz*dz>q.rr||y>q.h)continue;const lx=dx*q.c-dz*q.s,lz=dx*q.s+dz*q.c;if(Math.abs(lx)<q.hw+.7&&Math.abs(lz)<q.hd+.7)return true}return false}
+function wkCamDist(dt){const cp=Math.cos(WK.pitch),dx=Math.sin(WK.yaw)*cp,dy=Math.sin(WK.pitch),dz=Math.cos(WK.yaw)*cp,t0=C.t;let d=WK.dist;for(let t=2;t<=WK.dist;t+=1){const x=t0.x+dx*t,y=t0.y+dy*t,z=t0.z+dz*t;if(y<.4||camInside(x,y,z)){d=Math.max(3,t-1.5);break}}
+ WK.eff=WK.eff==null?d:(d<WK.eff?d:WK.eff+(d-WK.eff)*Math.min(1,dt*6));return WK.eff}
+// ---------- modèles ----------
+function wkPerson(col){const g=new THREE.Group(),sk=ML(0xe0b894),leg=(x)=>{const p=new THREE.Group();p.position.set(x,.8,0);const m=new THREE.Mesh(new THREE.CylinderGeometry(.07,.07,.8,8),ML(0x2a2f3a));m.position.y=-.4;m.castShadow=true;p.add(m);g.add(p);return p};
+ g.legL=leg(-.1);g.legR=leg(.1);const tor=new THREE.Mesh(new THREE.CylinderGeometry(.17,.2,.7,10),ML(col));tor.position.y=1.15;tor.castShadow=true;g.add(tor);const hd=new THREE.Mesh(new THREE.SphereGeometry(.15,12,10),sk);hd.position.y=1.65;g.add(hd);
+ const hair=new THREE.Mesh(new THREE.SphereGeometry(.155,12,8,0,6.3,0,1.2),ML(0x3a2a1a));hair.position.y=1.68;g.add(hair);[-1,1].forEach(a=>{const ar=new THREE.Mesh(new THREE.CylinderGeometry(.05,.05,.6,8),sk);ar.position.set(a*.26,1.1,0);ar.castShadow=true;g.add(ar)});
+ g.box=new THREE.Mesh(BOXG,ML(0xb48a55));g.box.scale.set(.5,.4,.4);g.box.position.set(0,1.1,-.35);g.box.visible=false;g.add(g.box);g.scale.setScalar(.95);return g}
+function wkVehModel(type){const g=new THREE.Group(),mat=c=>MPh(c,60,0x666666),wh=(x,z)=>{const w=new THREE.Mesh(new THREE.CylinderGeometry(.38,.38,.3,12),ML(0x1b1b1b));w.rotation.z=Math.PI/2;w.position.set(x,.38,z);g.add(w)},add=(sx,sy,sz,m,x,y,z)=>{const o=new THREE.Mesh(BOXG,m);o.scale.set(sx,sy,sz);o.position.set(x,y,z);o.castShadow=o.receiveShadow=true;g.add(o)};
+ if(type==='car'){add(1.8,.7,4,mat(0xc0392b),0,.75,0);add(1.6,.6,2,mat(0xc0392b),0,1.35,-.2);add(1.5,.45,1.8,E_GL,0,1.38,-.2);[[-.9,1.3],[.9,1.3],[-.9,-1.3],[.9,-1.3]].forEach(([x,z])=>wh(x,z));add(1.6,.12,.1,MEm(0xfff2c8),0,.85,2.02)}
+ else if(type==='van'){add(2.1,1.6,5.2,mat(0xf2f2ee),0,1.35,-.2);add(2.0,.8,1.4,mat(0xf2f2ee),0,.85,2.2);add(1.9,.7,.1,E_GL,0,1.55,2.4);add(2.12,.2,5.3,mat(0x2e6fb0),0,1.0,-.2);[[-1,1.6],[1,1.6],[-1,-1.6],[1,-1.6]].forEach(([x,z])=>wh(x,z));add(1.8,.12,.1,MEm(0xfff2c8),0,.9,2.92)}
+ else{add(2.5,2.6,6,mat(0xe8e6df),0,1.9,-1.6);add(2.4,1.5,1.8,mat(0x2d6aa8),0,1.25,2.2);add(2.2,.7,.1,E_GL,0,1.6,3.1);add(2.5,.2,7.8,mat(0x3a3f46),0,.65,.3);[[-1.2,2.2],[1.2,2.2],[-1.2,-.4],[1.2,-.4],[-1.2,-2.4],[1.2,-2.4]].forEach(([x,z])=>wh(x,z));add(2.4,.12,.1,MEm(0xfff2c8),0,.9,3.12)}
+ g.traverse(o=>{if(o.isMesh)o.castShadow=true});return g}
+function wkVehBuild(){WK.vehs.forEach(v=>scene.remove(v.mesh));WK.vehs=[];const P=p4(),w=wk();P.veh.forEach((t,i)=>{const p=w.vp[i]||{x:WK.x+4,z:WK.z,ry:0},mesh=wkVehModel(t);mesh.position.set(p.x,.02,p.z);mesh.rotation.y=p.ry;scene.add(mesh);WK.vehs.push({type:t,x:p.x,z:p.z,ry:p.ry,mesh,v:0})})}
+// ---------- initialisation ----------
+function wkInit(){const w=wk();wkBuildCollision();if(!WK.av){WK.av=wkPerson(0xe8742c);scene.add(WK.av)}
+ if(w.x===null){const N=CITY.V[4][4];w.x=N[0]+9;w.z=N[1]+3;w.ry=0}WK.x=w.x;WK.z=w.z;WK.ry=w.ry||0;wkVehBuild();wkHudInit();wkSet(w.on!==false);if(WK.on)toast('🚶 Mode joueur : ZQSD/WASD pour marcher, E pour interagir, F pour les véhicules. Banque, concessionnaire, magasins et agence se trouvent sur la carte (balises colorées).')}
+function wkSet(on){WK.on=on;WK.car=-1;WK.av.visible=on;window.__ts=on?WK.ts:1;wk().on=on;const b=$('wkb');if(b)b.textContent=on?'🛰 Vue aérienne':'🚶 Mode joueur';
+ if(on){WK.yaw=C.yaw;WK.pitch=.55;WK.dist=15;$('wkhud').style.display='block'}else{C.dist=320;C.pitch=.9;C.t.set(0,0,0);updCam();$('wkhud').style.display='none'}save()}
+function wkToggle(){wkSet(!WK.on)}
+// ---------- HUD ----------
+function wkHudInit(){if($('wkhud'))return;const h=document.createElement('div');h.id='wkhud';h.style.cssText='position:fixed;left:0;right:0;bottom:22px;text-align:center;z-index:6;pointer-events:none;font-size:15px;color:#fff;text-shadow:0 1px 4px #000';
+ h.innerHTML='<div id="wkprompt" style="display:inline-block;background:#0b1226cc;border:1px solid #2c3550;border-radius:10px;padding:8px 14px;min-height:20px"></div><div id="wkinfo" style="position:fixed;left:10px;top:54px;text-align:left;background:#0b1226bb;border:1px solid #2c3550;border-radius:10px;padding:6px 10px;font-size:13px"></div><div id="wkgps" style="position:fixed;right:210px;bottom:14px;background:#0b1226cc;border:1px solid #2c3550;border-radius:10px;padding:6px 10px;font-size:13px;display:none"></div><div id="wkhelp" style="position:fixed;left:10px;bottom:10px;font-size:12px;opacity:.75;text-align:left">ZQSD / WASD ou flèches : marcher · Maj : courir · E : interagir · F : véhicule · glisser : tourner la caméra</div>';
+ document.body.appendChild(h);$('top').querySelector('.sp').insertAdjacentHTML('afterend','<button class="sec" id="wkb" onclick="wkToggle()">🚶 Mode joueur</button>')}
+function cargoText(){const w=wk(),bx=l=>(l||[]).reduce((a,c)=>a+c.n,0);let s=`🎒 Mains ${bx(w.hand)}/${WCAP.hand}`;WK.vehs.forEach((v,i)=>{s+=` · ${VEH[v.type][0]} ${bx(w.vc[i])}/${WCAP[v.type]}`});return s}
+const WCAP={hand:4,car:10,van:28,truck:80};
+// ---------- interactions ----------
+const doorPt=b=>[b.x+Math.sin(b.ry)*(b.d/2+1.5),b.z+Math.cos(b.ry)*(b.d/2+1.5)];
+const poiRole=b=>b.poi||(b.shop==='supply'?'supply':b.shop?'furn':null);
+function wkScan(){let best=null,bd=4.2,at=null,ad=9;const px=WK.car>=0?WK.vehs[WK.car].x:WK.x,pz=WK.car>=0?WK.vehs[WK.car].z:WK.z;
+ for(const b of buildings){if(Math.abs(b.x-px)>26||Math.abs(b.z-pz)>26)continue;const[dx,dz]=doorPt(b),d=Math.hypot(dx-px,dz-pz);if(d<bd){bd=d;best=b}const r=poiRole(b);if(r&&d<ad){ad=d;at=r}}
+ WK.near=WK.car>=0?null:best;WK.poiAt=at;WK.nearVeh=-1;if(WK.car<0){let vd=5;WK.vehs.forEach((v,i)=>{const d=Math.hypot(v.x-WK.x,v.z-WK.z);if(d<vd){vd=d;WK.nearVeh=i}})}}
+function wkPromptText(){if(WK.car>=0)return'🚗 Au volant : ZQSD conduire · F descendre';const b=WK.near,t=[];
+ if(WK.nearVeh>=0)t.push(`F — Monter dans le véhicule (${VEH[WK.vehs[WK.nearVeh].type][0]})`);
+ if(b){const z=G.biz[b.id],own=G.owned.includes(b.id)||G.leased.includes(b.id),r=poiRole(b);
+  t.push(b.poi?`E — Entrer : ${b.name}`:r?'E — Entrer dans le magasin':z&&own?`E — ${z.name} (entrer · gérer · décharger)`:own?'E — Votre local (créer une entreprise)':b.state==='sale'?`E — Annonce : à vendre (${fmt(b.price)})`:b.state==='rent'?`E — Annonce : à louer (${fmt(b.rent)}/mois)`:`E — Voir : ${b.name}`)}
+ return t.join('   |   ')||'&nbsp;'}
+function wkInteract(){const b=WK.near;if(!b)return;sel=b;if(b.poi)poiOpen(b);else if(G.biz[b.id]&&(G.owned.includes(b.id)||G.leased.includes(b.id)))bizMenu(b);else show()}
+function wkVehicle(){if(WK.car>=0){const v=WK.vehs[WK.car];const side=[[2.6,0],[-2.6,0],[0,3],[0,-3]].map(([a,c])=>[v.x+Math.cos(v.ry)*a+Math.sin(v.ry)*c,v.z-Math.sin(v.ry)*a+Math.cos(v.ry)*c]).find(p=>!wkBlocked(p[0],p[1],.5));
+  if(!side)return toast('Pas de place pour descendre ici');WK.x=side[0];WK.z=side[1];WK.car=-1;WK.av.visible=true;v.v=0;return}
+ if(WK.nearVeh>=0){WK.car=WK.nearVeh;WK.av.visible=false;WK.vehs[WK.car].v=0}}
+// ---------- mise à jour ----------
+function wkUpdate(dt){if(!WK.on)return;const busy=wkBusy(),k=busy?{}:WK.keys;
+ if(WK.car<0){const sp=k.run?7.6:4.3;let ix=(k.r?1:0)-(k.l?1:0),iz=(k.f?1:0)-(k.b?1:0);const L=Math.hypot(ix,iz);
+  if(L>0){ix/=L;iz/=L;const fx=-Math.sin(WK.yaw),fz=-Math.cos(WK.yaw),rx=-fz,rz=fx,vx=(fx*iz+rx*ix)*sp,vz=(fz*iz+rz*ix)*sp,nx=WK.x+vx*dt,nz=WK.z+vz*dt;
+   if(!wkBlocked(nx,WK.z,.45))WK.x=nx;if(!wkBlocked(WK.x,nz,.45))WK.z=nz;const ta=Math.atan2(vx,vz);let da=ta-WK.ry;while(da>Math.PI)da-=6.283;while(da<-Math.PI)da+=6.283;WK.ry+=da*Math.min(1,dt*12);WK.legT+=dt*(k.run?13:9)}
+  else WK.legT*=.9;const sw=L>0?Math.sin(WK.legT)*.7:0;WK.av.legL.rotation.x=sw;WK.av.legR.rotation.x=-sw;
+  const ty=inBlock(WK.x,WK.z)?.3:.02;WK.y+=(ty-WK.y)*Math.min(1,dt*14);WK.av.position.set(WK.x,WK.y,WK.z);WK.av.rotation.y=WK.ry;WK.av.box.visible=wk().hand.length>0;
+  C.t.set(WK.x,WK.y+1.2,WK.z)}
+ else{const v=WK.vehs[WK.car],t=v.type,max=t==='car'?19:t==='van'?15:11,acc=t==='car'?14:t==='van'?10:7;
+  if(k.f)v.v+=acc*dt;else if(k.b)v.v-=acc*1.2*dt;else v.v*=Math.pow(.35,dt);v.v=Math.max(-max*.4,Math.min(max*(k.run?1.25:1),v.v));
+  if(Math.abs(v.v)>.4)v.ry+=((k.l?1:0)-(k.r?1:0))*dt*1.9*Math.min(1,Math.abs(v.v)/6)*(v.v>0?1:-1);
+  const fx=Math.sin(v.ry),fz=Math.cos(v.ry),nx=v.x+fx*v.v*dt,nz=v.z+fz*v.v*dt,r=t==='truck'?2.2:1.6,ok=!wkBlocked(nx+fx*r,nz+fz*r,1.2,true)&&!wkBlocked(nx-fx*r,nz-fz*r,1.2,true)&&!wkBlocked(nx,nz,1.2,true);
+  if(ok){v.x=nx;v.z=nz}else v.v*=-.25;v.mesh.position.set(v.x,.02,v.z);v.mesh.rotation.y=v.ry;WK.x=v.x;WK.z=v.z;C.t.set(v.x,1.4,v.z);
+  const dtYaw=v.ry+Math.PI;if(performance.now()-WK.dragT>2500){let dy=dtYaw-WK.yaw;while(dy>Math.PI)dy-=6.283;while(dy<-Math.PI)dy+=6.283;WK.yaw+=dy*Math.min(1,dt*1.8)}}
+ const w=wk();w.x=WK.x;w.z=WK.z;w.ry=WK.ry;WK.vehs.forEach((v,i)=>w.vp[i]={x:v.x,z:v.z,ry:v.ry});
+ C.yaw=WK.yaw;C.pitch=WK.pitch;C.dist=wkCamDist(dt);updCam();wkScan();
+ const pr=$('wkprompt');if(pr)pr.innerHTML=wkPromptText();const inf=$('wkinfo');if(inf)inf.innerHTML=`${cargoText()}<br>📅 Jour ${G.day}${WK.car>=0?` · 🚗 ${Math.round(Math.abs(WK.vehs[WK.car].v)*3.6)} km/h`:''}`;
+ wkGpsHud()}
+// GPS
+function wkGpsTarget(){const g=WK.gps;if(!g)return null;if(g.b!==undefined){const b=buildings[g.b],p=doorPt(b);return{x:p[0],z:p[1],n:b.name}}return{x:g.x,z:g.z,n:'Repère'}}
+function wkGpsHud(){const e=$('wkgps'),t=wkGpsTarget();if(!e)return;if(!t){e.style.display='none';return}const dx=t.x-WK.x,dz=t.z-WK.z,d=Math.hypot(dx,dz);if(d<5){WK.gps=null;e.style.display='none';return}
+ const rel=Math.atan2(dx,dz)-(WK.yaw+Math.PI);e.style.display='block';e.innerHTML=`<span style="display:inline-block;transform:rotate(${(-rel*180/Math.PI).toFixed(0)}deg);font-size:18px">⬆</span> 📍 ${t.n} · ${Math.round(d)} m <a onclick="WK.gps=null" style="pointer-events:auto;cursor:pointer">✖</a>`}
+function setGps(b){if(b){WK.gps={b:b.id}}}
+// entrées souris : rotation de la caméra autour du joueur
+document.addEventListener('pointerdown',e=>{if(WK.on&&e.target===el){WK.drag={x:e.clientX,y:e.clientY};e.stopPropagation()}},true);
+document.addEventListener('pointermove',e=>{if(WK.on&&e.target===el){if(WK.drag){WK.yaw-=(e.clientX-WK.drag.x)*.006;WK.pitch=Math.max(.15,Math.min(1.45,WK.pitch+(e.clientY-WK.drag.y)*.005));WK.drag={x:e.clientX,y:e.clientY};WK.dragT=performance.now()}e.stopPropagation()}},true);
+document.addEventListener('pointerup',e=>{if(WK.on&&e.target===el){WK.drag=null;e.stopPropagation()}},true);
+document.addEventListener('wheel',e=>{if(WK.on&&e.target===el){WK.dist=Math.max(5,Math.min(60,WK.dist*(e.deltaY>0?1.1:.9)));e.preventDefault();e.stopPropagation()}},{capture:true,passive:false});
+// boucle
+const _mc12=moveCars;moveCars=function(dt){_mc12(dt);if(window.__ed&&__ed.on)return;wkUpdate(dt)};
+// minimap : repère du joueur, points d'intérêt, GPS
+const _dm12=drawMini;drawMini=function(){_dm12();if(!MM||!WK.on)return;const x=MM.getContext('2d');
+ buildings.forEach(b=>{const r=poiRole(b);if(!r)return;const[a,c]=mmXY(b.x,b.z);x.fillStyle=POICOL[r]||'#fff';x.beginPath();x.arc(a,c,4.5,0,6.3);x.fill();x.strokeStyle='#000';x.stroke();x.fillStyle='#000';x.font='bold 7px sans-serif';x.textAlign='center';x.fillText(POIL[r]||'?',a,c+2.5)});
+ const t=wkGpsTarget();if(t){const[a,c]=mmXY(t.x,t.z);x.strokeStyle='#ff4fd8';x.lineWidth=2;x.beginPath();x.arc(a,c,7,0,6.3);x.stroke()}
+ const[px,pz]=mmXY(WK.x,WK.z);x.save();x.translate(px,pz);x.rotate(-(WK.car>=0?WK.vehs[WK.car].ry:WK.ry)+Math.PI);x.fillStyle='#ff9f1c';x.beginPath();x.moveTo(0,-6);x.lineTo(4.5,5);x.lineTo(-4.5,5);x.closePath();x.fill();x.strokeStyle='#fff';x.lineWidth=1.2;x.stroke();x.restore()};
+const POICOL={bank:'#4da3ff',broker:'#9b7dff',job:'#ffd166',train:'#7ee081',dealer:'#ff6b6b',supply:'#ffb703',furn:'#1fd1c4'},POIL={bank:'B',broker:'$',job:'E',train:'F',dealer:'V',supply:'P',furn:'M'};
+
+</script>
+<script>
+// ===== Empire Ambitions — Phase 12b : lieux, cartons, accès sur place, réparateur =====
+const POIS={bank:{n:'Banque Crédit du Nord',c:0x4da3ff,t:'bureau',dc:.2},broker:{n:'Courtier Bourse & Co',c:0x9b7dff,t:'bureau',dc:.13},job:{n:"Agence pour l'emploi",c:0xffd166,t:'bureau',dc:.32},train:{n:'Centre de formation',c:0x7ee081,t:'bureau',dc:.45},dealer:{n:'Concessionnaire Auto',c:0xff6b6b,t:'entrepot',dc:.6}};
+const _ms12=markShops;markShops=function(){_ms12();assignPOIs()};
+function assignPOIs(){const used=[];Object.entries(POIS).forEach(([r,d])=>{if(buildings.some(b=>b.poi===r))return;
+ const c=buildings.filter(b=>!b.shop&&!b.poi&&b.base!=='blocked'&&(r==='dealer'?(b.type==='entrepot'||b.type==='commerce')&&b.area>=260:b.type===d.t&&b.floors>=(r==='bank'?5:3))&&used.every(u=>Math.hypot(u.x-b.x,u.z-b.z)>45)).sort((a,b)=>Math.abs(a.dc-d.dc)-Math.abs(b.dc-d.dc))[0];
+ if(!c)return;used.push(c);c.poi=r;c.base='blocked';c.baseOwner=d.n;c.name=d.n;c.cs=null;c.state='blocked'})}
+// balises lumineuses et étiquettes
+function poiLabel(txt,col){const c=mkc(512,128),x=c.getContext('2d');x.fillStyle='rgba(10,16,34,.85)';x.fillRect(0,0,512,128);x.strokeStyle='#'+col.toString(16).padStart(6,'0');x.lineWidth=8;x.strokeRect(4,4,504,120);x.fillStyle='#fff';x.font='bold 46px system-ui,sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText(txt,256,68,480);return new THREE.CanvasTexture(c)}
+function buildPOIVisuals(){buildings.forEach(b=>{const r=poiRole(b);if(!r)return;const d=POIS[r],col=d?d.c:r==='supply'?0xffb703:0x1fd1c4,name=d?d.n:r==='supply'?'Fournitures Pro':'Pro Équipement';
+ const bm=new THREE.Mesh(new THREE.CylinderGeometry(1.2,1.8,b.h+90,14,1,true),new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:.22,side:THREE.DoubleSide,depthWrite:false,fog:false,blending:THREE.AdditiveBlending}));bm.position.set(b.x,(b.h+90)/2,b.z);scene.add(bm);
+ const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:poiLabel(name,col),depthTest:false,transparent:true,fog:false}));sp.scale.set(24,6,1);sp.position.set(b.x,b.h+16,b.z);sp.renderOrder=10;scene.add(sp)})}
+const _roads12=roads;roads=function(){_roads12();buildPOIVisuals()};
+const _start12=start;start=function(){_start12();wkInit()};
+// ---------- accès sur place ----------
+const atRole=r=>!WK.on||WK.poiAt===r||(r==='shop'&&(WK.poiAt==='supply'||WK.poiAt==='furn'));
+function roleBuilding(r){const l=buildings.filter(b=>poiRole(b)===r||(r==='shop'&&poiRole(b)));return l.sort((a,b)=>Math.hypot(a.x-WK.x,a.z-WK.z)-Math.hypot(b.x-WK.x,b.z-WK.z))[0]}
+function needRole(r,label){if(atRole(r))return true;const b=roleBuilding(r);if(b)setGps(b);toast(`📍 Rendez-vous ${label} (GPS activé)`);return false}
+const nearBiz=id=>{if(!WK.on)return true;const b=buildings[id],p=doorPt(b);return Math.hypot(p[0]-WK.x,p[1]-WK.z)<14};
+const gate=(name,role,label,after)=>{const f=window[name];if(typeof f!=='function')return;window[name]=function(...a){if(!needRole(role,label))return;return f.apply(this,a)}};
+gate('bankModal','bank','à la banque');gate('holdModal','bank','à la banque (création de holding)');gate('expModal','bank','à la banque (expansion)');gate('bourse','broker','chez le courtier');gate('skillModal','train','au centre de formation');
+const _bz=bizModal;bizModal=function(id){if(!nearBiz(id)){setGps(buildings[id]);toast(`📍 Rendez-vous sur place : ${G.biz[id]?G.biz[id].name:'entreprise'} (GPS activé)`);return}_bz(id)};
+const _bv12=buyVeh;buyVeh=function(k){if(!needRole('dealer','chez le concessionnaire'))return;const n=p4().veh.length;_bv12(k);if(p4().veh.length>n){const b=buildings.find(x=>x.poi==='dealer'),p=b?doorPt(b):[WK.x,WK.z],o=b?[Math.sin(b.ry),Math.cos(b.ry)]:[1,0],w=wk(),i=n;w.vp[i]={x:p[0]+o[0]*4.5,z:p[1]+o[1]*4.5,ry:Math.atan2(-o[0],-o[1])+Math.PI/2};w.vc[i]=[];wkVehBuild();toast('🚗 Votre véhicule vous attend devant le concessionnaire (F pour monter)')}dealerModal()};
+const _sv12=sellVeh;sellVeh=function(i){if(!needRole('dealer','chez le concessionnaire'))return;if(WK.car===i)return toast('Descendez du véhicule avant de le vendre');const w=wk();_sv12(i);w.vp.splice(i,1);w.vc.splice(i,1);wkVehBuild();dealerModal()};
+const _eh=empHire;empHire=function(id,i){if(!needRole('job',"à l'agence pour l'emploi"))return;_eh(id,i)};
+const _er=empRefresh;empRefresh=function(id){if(!needRole('job',"à l'agence pour l'emploi"))return;_er(id)};
+const _eb=edBuy;edBuy=function(i){if(WK.on){toast('🛒 Achetez le mobilier au magasin de meubles, puis déchargez-le sur place.');return}_eb(i)};
+const _sc=supCat;supCat=function(id,shop){if(!shop&&WK.on&&!needRole('shop','dans un magasin (livraison)'))return;_sc(id,shop)};
+const _ct=catalog;catalog=function(id,shop){if(!shop&&WK.on&&!needRole('shop','dans un magasin (livraison)'))return;_ct(id,shop)};
+// ---------- cartons ----------
+const bx12=l=>(l||[]).reduce((a,c)=>a+c.n,0),cargoList=w=>w==='hand'?wk().hand:(wk().vc[w]||(wk().vc[w]=[])),freeCap=w=>(w==='hand'?WCAP.hand:WCAP[p4().veh[w]])-bx12(cargoList(w));
+function loadWhere(n){let best=-1,bd=30;WK.vehs.forEach((v,i)=>{const d=Math.hypot(v.x-WK.x,v.z-WK.z);if(d<bd&&freeCap(i)>=n){best=i;bd=d}});return best>=0?best:freeCap('hand')>=n?'hand':null}
+function addCargo(c){const w=loadWhere(c.n);if(w===null){toast('🎒 Plus de place : déposez vos cartons ou prenez un véhicule (F) garé près du magasin');return false}const l=cargoList(w),e=l.find(x=>x.t===c.t&&x.biz===c.biz&&x.k===c.k);if(e)e.n+=c.n;else l.push(c);return w}
+const _bs12=buySup;buySup=function(k,shop){if(!(WK.on&&shop))return _bs12(k,shop);const z=G.biz[catB];if(!z)return;const s=SUP[k],p=Math.round(s[2]*.9);if(G.money<p)return toast('Trésorerie insuffisante');const w=addCargo({t:'sup',biz:catB,k,n:1});if(w===false)return;G.money-=p;toast(`📦 Chargé ${w==='hand'?'dans vos bras':'dans le véhicule'} : ${s[0]} → ${z.name}`);save();hud();supCat(catB,1)};
+const _bi12=buyItem;buyItem=function(i,shop){if(!(WK.on&&shop))return _bi12(i,shop);const z=G.biz[catB];if(!z)return;const it=ITEMS[i],p=Math.round(it[1]*.9),n=Math.max(1,Math.ceil(it[2]*it[3]/2));if(G.money<p)return toast('Trésorerie insuffisante');const w=addCargo({t:'furn',biz:catB,k:i,n});if(w===false)return;G.money-=p;toast(`📦 Chargé ${w==='hand'?'dans vos bras':'dans le véhicule'} : ${it[0]} (${n} carton(s)) → ${z.name}`);save();hud()};
+function unloadAt(id){const z=G.biz[id],b=buildings[id],p=doorPt(b);let n=0;const take=l=>{for(let i=l.length-1;i>=0;i--){const c=l[i];if(c.biz!==+id)continue;if(c.t==='furn')z.inv[c.k]=(z.inv[c.k]||0)+1;else addSup(z,c.k,c.n);n+=c.n;l.splice(i,1)}};
+ take(wk().hand);WK.vehs.forEach((v,i)=>{if(Math.hypot(v.x-p[0],v.z-p[1])<18)take(cargoList(i))});save();if(n)toast(`📦 ${n} carton(s) déchargé(s) chez ${z.name}`);else toast('Rien à décharger pour cette entreprise (véhicule trop loin ?)');bizMenu(b)}
+function pendingFor(id){const p=buildings[id],d=doorPt(p);let n=bx12(wk().hand.filter(c=>c.biz===+id));WK.vehs.forEach((v,i)=>{if(Math.hypot(v.x-d[0],v.z-d[1])<18)n+=bx12(cargoList(i).filter(c=>c.biz===+id))});return n}
+// ---------- menus ----------
+function bizMenu(b){const z=G.biz[b.id],n=pendingFor(b.id);modal(`<h2>🏪 ${z.name}</h2><small>${b.address} · ${z.open?'Ouverte':'Fermée'}</small><div class="row" style="flex-direction:column;margin-top:8px"><button onclick="closeModal();edOpen(${b.id})">🪑 Entrer et aménager (mobilier, décor)</button><button onclick="bizModal(${b.id})">⚙️ Bureau : gérer l'entreprise</button><button class="${n?'grn':'sec'}" ${n?'':'disabled'} onclick="unloadAt(${b.id})">📦 Décharger les cartons (${n})</button><button class="sec" onclick="closeModal()">Sortir</button></div>`)}
+function poiOpen(b){const r=b.poi;if(r==='bank')bankModal();else if(r==='broker')bourse();else if(r==='train')skillModal();else if(r==='dealer')dealerModal();else if(r==='job')jobModal()}
+function dealerModal(){const P=p4();modal(`<h2>🚗 Concessionnaire</h2><small>Votre véhicule est garé devant ; montez avec F. Capacité en cartons. Pas de chauffeur à payer : c'est vous qui conduisez.</small><table>${Object.entries(VEH).map(([k,v])=>`<tr><td><b>${v[0]}</b><br><small>${WCAP[k]} cartons · entretien ${fmt(v[2])}/mois</small></td><td>${fmt(v[1])}</td><td><button ${G.money<v[1]?'disabled':''} onclick="buyVeh('${k}')">Acheter</button></td></tr>`).join('')}</table><b>Votre flotte</b><table>${P.veh.map((v,i)=>`<tr><td>${VEH[v][0]}</td><td>${fmt(Math.round(VEH[v][1]*.7))}</td><td><button class="red" onclick="sellVeh(${i})">Vendre</button></td></tr>`).join('')||'<tr><td>Aucun véhicule</td></tr>'}</table><div class="row"><button class="sec" onclick="closeModal()">Sortir</button></div>`)}
+function jobModal(){const ids=Object.keys(G.biz);modal(`<h2>🧑‍💼 Agence pour l'emploi</h2><small>Choisissez l'entreprise pour laquelle recruter.</small><div class="row" style="flex-direction:column;margin-top:8px">${ids.map(i=>`<button onclick="persModal(${i})">${G.biz[i].name} (${ensureEmps(G.biz[i]).length} employé(s))${hasRepair(G.biz[i])?' 🔧':''}</button>`).join('')||'<small>Aucune entreprise.</small>'}<button class="sec" onclick="closeModal()">Sortir</button></div>`)}
+// hub : les commandes à distance pointent vers les lieux
+const _hub=hub;hub=function(){_hub();if(WK.on)$('mbox').insertAdjacentHTML('beforeend','<small>🚶 Mode joueur : la banque, la holding, l\'expansion et les véhicules se gèrent sur place (GPS automatique).</small>')};
+// ---------- véhicules : plus de chauffeur à payer, voiture ajoutée ----------
+VEH.car=['Voiture',3500,150,800];
+// ---------- réparateur ----------
+function hasRepair(z){return(z.emps||[]).some(e=>e.role==='Réparateur')}
+const _pm12=persModal;persModal=function(id){_pm12(id);const z=G.biz[id];$('mbox').insertAdjacentHTML('afterbegin',`<div style="padding:6px;border-radius:8px;background:${hasRepair(z)?'#123a22':'#3a2a12'};margin-bottom:6px">${hasRepair(z)?'🔧 Un réparateur est employé : plus aucune panne dans cette entreprise.':'⚠ Aucun réparateur : des pannes peuvent immobiliser le matériel. Recrutez un « Réparateur » à l\'agence pour l\'emploi.'}</div>`)};
+const _p3d12=p3Day;p3Day=function(){_p3d12();Object.entries(G.biz).forEach(([id,z])=>{if(hasRepair(z)&&z.broken&&z.broken.length){const g=gridOf(buildings[id]);z.broken.splice(0).forEach(x=>{if(!autoFit(z,g,x))z.inv[x]=(z.inv[x]||0)+1});toast('🔧 Le réparateur a remis en état le matériel de '+z.name)}})};
 
 </script>
 <script>
